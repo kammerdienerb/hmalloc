@@ -41,6 +41,17 @@ typedef struct {
     };
 
     /*
+     * Chunk metadata.
+     */
+    union {
+        struct {
+            u16 flags;
+            u16 thread_id;
+        };
+        u32 __meta;
+    };
+
+    /*
      * Offsets to the previous and next chunks in the free list for this
      * block.
      * 0 if at end.
@@ -53,17 +64,6 @@ typedef struct {
             u32 offset_next;
         };
         u64 offset_block;
-    };
-
-    /*
-     * Chunk metadata.
-     */
-    union {
-        struct {
-            u16 flags;
-            u16 thread_id;
-        };
-        u32 __meta;
     };
 } chunk_header_t;
 

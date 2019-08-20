@@ -3,7 +3,8 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <stdio.h>
+#include <unistd.h>
+
 
 
 
@@ -35,7 +36,20 @@
 #define internal static
 #define external extern
 
-#ifdef HMALLOC_DO_LOGGING
+#include "FormatString.h"
+internal void hmalloc_putc(char c, void *context) {
+    (void)context;
+    write(2, &c, 1);
+}
+internal void hmalloc_printf(const char *fmt, ...) {
+    va_list va;
+    
+    va_start(va, fmt);
+    FormatString(hmalloc_putc, NULL, fmt, va);
+    va_end(va);
+}
+
+#ifdef HMALLOC_DO_ASSERTIONS
 #include <assert.h>
 #define ASSERT(cond, msg) assert((cond) && "[hmalloc]" msg)
 #else
@@ -43,7 +57,8 @@
 #endif
 
 #ifdef HMALLOC_DO_LOGGING
-#define LOG(fmt, ...) fprintf(stderr, "[ hmalloc :: %-12s :: %3d ] " fmt "", __FILE__, __LINE__, ##__VA_ARGS__)
+#define LOG(fmt, ...) \
+    hmalloc_printf("[ hmalloc :: %-12s :: %3d ] " fmt "", __FILE__, __LINE__, ##__VA_ARGS__)
 #else
 #define LOG(fmt, ...) ;
 #endif
@@ -59,5 +74,9 @@
     b = (void*)(((u64)(b)) ^ ((u64)(a))); \
     a = (void*)(((u64)(a)) ^ ((u64)(b))); \
 } while (0);
+
+#define ALIGN(x, align)      ((__typeof(x))((((u64)(x)) + (((u64)align) - 1ULL)) & ~(((u64)align) - 1ULL)))
+#define IS_ALIGNED(x, align) (!(((u64)(x)) & (((u64)align) - 1ULL)))
+#define IS_POWER_OF_TWO(x)   ((x) != 0 && IS_ALIGNED((x), (x)))
 
 #endif

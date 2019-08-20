@@ -17,9 +17,9 @@ internal void system_info_init(void) {
         system_info.is_initialized = 1;
     } SYS_INFO_UNLOCK();
 
-    LOG("page_size:       %llu\n", system_info.page_size);
-    LOG("MAX_SMALL_CHUNK: %llu\n", MAX_SMALL_CHUNK);
-    LOG("MAX_BIG_CHUNK:   %llu\n", MAX_BIG_CHUNK);
+    LOG("page_size:       %lu\n", system_info.page_size);
+    LOG("MAX_SMALL_CHUNK: %lu\n", MAX_SMALL_CHUNK);
+    LOG("MAX_BIG_CHUNK:   %lu\n", MAX_BIG_CHUNK);
 
     LOG("initialized system info\n");
 }
@@ -30,11 +30,11 @@ internal void * get_pages_from_os(u32 n_pages) {
     if (system_info.is_initialized == 0) { system_info_init(); }
 
     addr = mmap(NULL,
-         n_pages * system_info.page_size,
-         PROT_READ   | PROT_WRITE,
-         MAP_PRIVATE | MAP_ANON,
-         -1,
-         (off_t)0);
+                n_pages * system_info.page_size,
+                PROT_READ   | PROT_WRITE,
+                MAP_PRIVATE | MAP_ANON,
+                -1,
+                (off_t)0);
 
     if (addr == MAP_FAILED) {
         LOG("ERROR -- could not get %u pages (%llu bytes) from OS\n", n_pages, n_pages * system_info.page_size);
@@ -61,7 +61,7 @@ internal block_header_t * heap_new_block(heap_t *heap, u64 n_bytes) {
     }
 
     block       = get_pages_from_os(n_pages);
-    block->end  = block + (n_pages * system_info.page_size); 
+    block->end  = ((void*)block) + (n_pages * system_info.page_size); 
     block->next = NULL;
 
     /* Create the first and only chunk in the block. */
@@ -201,7 +201,7 @@ internal void * heap_alloc(heap_t *heap, u64 n_bytes) {
      * Round n_bytes to the nearest multiple of 8 so that
      * we get the best alignment.
      */
-    n_bytes = (n_bytes + 0x7ULL) & ~0x7ULL;
+    n_bytes = ALIGN(n_bytes, 8);
 
     /*
      * @incomplete
@@ -344,46 +344,43 @@ internal void heap_free(heap_t *heap, chunk_header_t *chunk) {
     } HEAP_UNLOCK(heap);
 }
 
-internal void * heap_valloc(heap_t *heap, size_t n_bytes) {
+internal void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignment) {
     block_header_t *block;
     chunk_header_t *first_chunk,
+                   *first_chunk_check,
                    *chunk;
-    void           *mem;
-    u64             page_size,
-                    new_block_size_request,
+    void           *mem,
+                   *aligned_addr;
+    u64             new_block_size_request,
                     first_chunk_size;
 
-    /* 
-     * Round n_bytes to the nearest multiple of 8 so that
-     * we get the best alignment.
-     */
-    n_bytes = (n_bytes + 0x7ULL) & ~0x7ULL;
+    ASSERT(alignment > 0, "invalid alignment -- must be > 0");
+    ASSERT(IS_POWER_OF_TWO(alignment), "invalid alignment -- must be a power of two");
 
-    page_size              = system_info.page_size;
-    new_block_size_request = n_bytes + page_size;
+    if (n_bytes == 0)    { return NULL; }
 
+    new_block_size_request =   n_bytes                 /* The bytes we need to give the user. */
+                             + alignment               /* Make sure there's space to align. */
+                             + sizeof(chunk_header_t); /* We're going to put another chunk in there. */
+    
     HEAP_LOCK(heap); {
-        block = heap_new_block(heap, new_block_size_request);
-        heap_add_block(heap, block);
-
-        first_chunk_size =   page_size               /* We have a full page to use up.           */
-                           - sizeof(block_header_t)  /* There's a block header.                  */
-                           - sizeof(chunk_header_t)  /* And a chunk header for the chunk we're 
-                                                        creating. */
-                           - sizeof(chunk_header_t); /* And a chunk header for that will finally
-                                                        fill the page so that the user's memory 
-                                                        lands right on the next page.            */
+        block             = heap_new_block(heap, new_block_size_request);
+        first_chunk_check = ((void*)block) + sizeof(block_header_t);
+        aligned_addr      = ALIGN(CHUNK_USER_MEM(first_chunk_check), alignment);
+        first_chunk_size  =   (aligned_addr - sizeof(chunk_header_t))
+                           - (((void*)block) + sizeof(block_header_t) + sizeof(chunk_header_t));
         first_chunk      = heap_get_chunk_from_block_if_free(heap, block, first_chunk_size);
         chunk            = heap_get_chunk_from_block_if_free(heap, block, n_bytes);
+        mem              = CHUNK_USER_MEM(chunk);
+        
+        ASSERT(first_chunk_check == first_chunk, "first chunk mismatch");
+        ASSERT(aligned_addr < block->end, "aligned address is outside of block");
+        ASSERT(mem == aligned_addr, "memory acquired from chunk is not the expected aligned address");
 
-        heap_free_l(heap, CHUNK_USER_MEM(first_chunk));
+        heap_free_l(heap, first_chunk);
     } HEAP_UNLOCK(heap);
 
-    ASSERT(chunk != NULL, "invalid chunk -- could not allocate memory");
-
-    mem = CHUNK_USER_MEM(chunk);
-
-    ASSERT(!(((u64)mem) & (page_size - 1)), "hmalloc_valloc did not align to page boundary");
+    mem = aligned_addr;
 
     return mem;
 }
