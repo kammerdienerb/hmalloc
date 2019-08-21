@@ -51,11 +51,15 @@ internal void hmalloc_printf(const char *fmt, ...) {
 
 #ifdef HMALLOC_DO_ASSERTIONS
 internal void hmalloc_assert_fail(const char *msg, const char *fname, int line, const char *cond_str) {
+    volatile int *trap;
+
     hmalloc_printf("Assertion failed -- %s\n"
                    "at  %s :: line %d\n"
                    "    Condition: '%s'\n"
                    , msg, fname, line, cond_str);
-    (void)*(int*)0;
+    
+    trap = 0;
+    (void)*trap;
 }
 #define ASSERT(cond, msg)                                \
 if (!(cond)) {                                           \
