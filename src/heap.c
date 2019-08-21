@@ -74,7 +74,8 @@ internal void heap_split_chunk(chunk_header_t *chunk, u64 n_bytes) {
      */
     adjacent_chunk = SMALL_CHUNK_ADJACENT(chunk);
     new_chunk      = CHUNK_USER_MEM(chunk) + n_bytes;
-    
+
+    ASSERT(new_chunk > chunk, "bad distance");
     distance = CHUNK_DISTANCE(new_chunk, chunk);
 
     chunk->size        = n_bytes;
@@ -86,6 +87,7 @@ internal void heap_split_chunk(chunk_header_t *chunk, u64 n_bytes) {
     if (last_in_block) {
         new_chunk->offset_next = 0;
     } else {
+        ASSERT(adjacent_chunk > new_chunk, "bad distance");
         distance                    = CHUNK_DISTANCE(adjacent_chunk, new_chunk);
         new_chunk->offset_next      = distance;
         adjacent_chunk->offset_prev = distance;
@@ -138,6 +140,7 @@ internal chunk_header_t * heap_get_chunk_from_block_if_free(heap_t *heap, block_
             }
 
             if (prev_free_chunk != NULL && next_free_chunk != NULL) {
+                ASSERT(next_free_chunk > prev_free_chunk, "bad distance");
                 distance = CHUNK_DISTANCE(next_free_chunk, prev_free_chunk);
                 prev_free_chunk->offset_next = distance;
                 next_free_chunk->offset_prev = distance;
@@ -208,6 +211,7 @@ internal void * heap_alloc(heap_t *heap, u64 n_bytes) {
     }
 
     ASSERT(chunk != NULL, "invalid chunk -- could not allocate memory");
+    ASSERT(CHUNK_PARENT_BLOCK(chunk) == block, "chunk doesn't point to its block");    
 
     mem = CHUNK_USER_MEM(chunk);
 
@@ -229,6 +233,7 @@ internal chunk_header_t * coalesce_free_chunk_back(block_header_t *block, chunk_
         prev_free_chunk->size += sizeof(chunk_header_t) + chunk->size;
 
         if (next_free_chunk != NULL) {
+            ASSERT(next_free_chunk > prev_free_chunk, "bad distance");
             prev_free_chunk->offset_next = CHUNK_DISTANCE(next_free_chunk, prev_free_chunk);
         } else {
             prev_free_chunk->offset_next = 0;
@@ -271,7 +276,7 @@ internal void heap_free_l(heap_t *locked_heap, chunk_header_t *chunk) {
     chunk->offset_prev = chunk->offset_next = 0;
 
     if (free_list_cursor == NULL) {
-        block->free_list_head = chunk;
+        block->free_list_head = block->free_list_tail = chunk;
     } else {
         while (free_list_cursor != NULL && free_list_cursor < chunk) {
             free_list_cursor = CHUNK_NEXT(free_list_cursor);  
@@ -288,14 +293,21 @@ internal void heap_free_l(heap_t *locked_heap, chunk_header_t *chunk) {
             next_free_chunk = free_list_cursor;
         }
 
+        ASSERT(prev_free_chunk == NULL || prev_free_chunk < chunk,
+               "bad prev_free_chunk");
+        ASSERT(next_free_chunk == NULL || chunk < next_free_chunk,
+               "bad next_free_chunk");
+
         if (prev_free_chunk == NULL && next_free_chunk == NULL) {
             chunk->offset_prev = chunk->offset_next = 0;
         } else {
             if (prev_free_chunk != NULL) {
+                ASSERT(chunk > prev_free_chunk, "bad distance");
                 distance                     = CHUNK_DISTANCE(chunk, prev_free_chunk);
                 prev_free_chunk->offset_next = distance;
                 chunk->offset_prev           = distance;
             } else if (next_free_chunk != NULL) {
+                ASSERT(next_free_chunk > chunk, "bad distance");
                 distance                     = CHUNK_DISTANCE(next_free_chunk, chunk);
                 next_free_chunk->offset_prev = distance;
                 chunk->offset_next           = distance;
@@ -356,6 +368,7 @@ internal void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignmen
         chunk            = heap_get_chunk_from_block_if_free(heap, block, n_bytes);
         mem              = CHUNK_USER_MEM(chunk);
         
+        ASSERT(CHUNK_PARENT_BLOCK(chunk) == block, "chunk doesn't point to its block");    
         ASSERT(first_chunk_check == first_chunk, "first chunk mismatch");
         ASSERT(aligned_addr < block->end, "aligned address is outside of block");
         ASSERT(mem == aligned_addr, "memory acquired from chunk is not the expected aligned address");

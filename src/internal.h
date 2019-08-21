@@ -9,8 +9,8 @@
 
 
 
-#define HMALLOC_DO_LOGGING
-#define HMALLOC_DO_ASSERTIONS
+/* #define HMALLOC_DO_LOGGING */
+/* #define HMALLOC_DO_ASSERTIONS */
 #define HMALLOC_ANSI_C
 
 #ifdef HMALLOC_ANSI_C

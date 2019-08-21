@@ -4,8 +4,9 @@
 #include "init.h"
 
 internal void thread_local_data_init(thread_local_data_t *info, u16 id) {
-    info->id   = id;
-    info->heap = heap_make();
+    info->id              = id;
+    info->heap            = heap_make();
+    info->heap.thread_idx = id;
 }
 
 internal void thread_local_data_fini(thread_local_data_t *info) {
