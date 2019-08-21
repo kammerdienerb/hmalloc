@@ -5,20 +5,6 @@
 
 #include <pthread.h>
 
-typedef struct {
-    int is_initialized;
-    u64 page_size;
-} system_info_t;
-
-internal pthread_mutex_t system_info_lock = PTHREAD_MUTEX_INITIALIZER;
-#define SYS_INFO_LOCK()   do { pthread_mutex_lock(&system_info_lock);   } while (0)
-#define SYS_INFO_UNLOCK() do { pthread_mutex_unlock(&system_info_lock); } while (0)
-
-internal system_info_t system_info;
-
-internal void system_info_init(void);
-
-internal void * get_pages_from_os(u32 n_pages);
 
 
 /* Chunk header flags */
@@ -46,7 +32,7 @@ typedef struct {
     union {
         struct {
             u16 flags;
-            u16 thread_id;
+            u16 thread_idx;
         };
         u32 __meta;
     };
@@ -88,6 +74,10 @@ typedef struct {
 
 #define CHUNK_PARENT_BLOCK(addr) ((block_header_t*)(((void*)(addr)) - ((chunk_header_t*)addr)->offset_block))
 
+
+
+#define DEFAULT_BLOCK_PAGES (4);
+
 typedef struct block_header {
     chunk_header_t      *free_list_head,
                         *free_list_tail;
@@ -101,7 +91,7 @@ typedef struct block_header {
     (((system_info.page_size) * (N)) - sizeof(block_header_t) - sizeof(chunk_header_t))
 
 typedef struct {
-    u16              thread_id;
+    u16              thread_idx;
     block_header_t  *blocks_head,
                     *blocks_tail;
     pthread_mutex_t  mtx;

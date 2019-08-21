@@ -1,50 +1,12 @@
 #include "internal.h"
 #include "heap.h"
+#include "os.h"
 
-#include <sys/mman.h>
 #include <unistd.h>
 #include <string.h>
 #include <pthread.h>
 
-internal void system_info_init(void) {
-    i64 page_size;
-
-    SYS_INFO_LOCK(); {
-        page_size = sysconf(_SC_PAGE_SIZE);
-        ASSERT(page_size > sizeof(chunk_header_t), "invalid page size");
-
-        system_info.page_size      = page_size;
-        system_info.is_initialized = 1;
-    } SYS_INFO_UNLOCK();
-
-    LOG("page_size:       %lu\n", system_info.page_size);
-    LOG("MAX_SMALL_CHUNK: %lu\n", MAX_SMALL_CHUNK);
-    LOG("MAX_BIG_CHUNK:   %lu\n", MAX_BIG_CHUNK);
-
-    LOG("initialized system info\n");
-}
-
-internal void * get_pages_from_os(u32 n_pages) {
-    void *addr;
-
-    if (system_info.is_initialized == 0) { system_info_init(); }
-
-    addr = mmap(NULL,
-                n_pages * system_info.page_size,
-                PROT_READ   | PROT_WRITE,
-                MAP_PRIVATE | MAP_ANON,
-                -1,
-                (off_t)0);
-
-    if (addr == MAP_FAILED) {
-        LOG("ERROR -- could not get %u pages (%llu bytes) from OS\n", n_pages, n_pages * system_info.page_size);
-        return NULL;
-    }
-
-    return addr;
-}
-
-internal inline void zero_chunk_header(chunk_header_t *chunk) {
+internal void zero_chunk_header(chunk_header_t *chunk) {
     memset(chunk, 0, sizeof(*chunk));
 }
 
@@ -54,7 +16,7 @@ internal block_header_t * heap_new_block(heap_t *heap, u64 n_bytes) {
     block_header_t *block;
     chunk_header_t *chunk;
 
-    n_pages   = 1;
+    n_pages = DEFAULT_BLOCK_PAGES;
 
     while ((avail = LARGEST_CHUNK_IN_EMPTY_N_PAGE_BLOCK(n_pages)) < n_bytes) {
         n_pages += 1;
@@ -69,10 +31,9 @@ internal block_header_t * heap_new_block(heap_t *heap, u64 n_bytes) {
 
     zero_chunk_header(chunk);
 
-    chunk->flags    |= CHUNK_IS_FREE;
-    chunk->size      = avail;
-    chunk->thread_id = heap->thread_id;
-
+    chunk->flags     |= CHUNK_IS_FREE;
+    chunk->size       = avail;
+    chunk->thread_idx = heap->thread_idx;
 
     block->free_list_head = block->free_list_tail = chunk;
 
@@ -138,6 +99,7 @@ internal chunk_header_t * heap_get_chunk_from_block_if_free(heap_t *heap, block_
                    *prev_free_chunk,
                    *next_free_chunk;
     u64             distance;
+    int             only_free_chunk;
 
     /* Scan until we find a chunk big enough. */
     chunk = block->free_list_head;
@@ -155,30 +117,33 @@ internal chunk_header_t * heap_get_chunk_from_block_if_free(heap_t *heap, block_
             heap_split_chunk(chunk, n_bytes);
         }
 
+        only_free_chunk = (   block->free_list_head == block->free_list_tail
+                           && block->free_list_tail == chunk);
+
+        ASSERT(chunk->size >= n_bytes, "split chunk is no longer big enough");
+
         /* Remove from free list and patch up. */
-        prev_free_chunk = CHUNK_PREV(chunk);
-        next_free_chunk = CHUNK_NEXT(chunk);
+        if (only_free_chunk) {
+            block->free_list_head = block->free_list_tail = NULL;
+        } else {
+            prev_free_chunk = CHUNK_PREV(chunk);
+            next_free_chunk = CHUNK_NEXT(chunk);
 
-        if (chunk == block->free_list_head) {
-            block->free_list_head = next_free_chunk;
-        }
-        if (chunk == block->free_list_tail) {
-            block->free_list_tail = next_free_chunk;
-        }
-
-        distance = CHUNK_DISTANCE(next_free_chunk, prev_free_chunk);
-
-        if (prev_free_chunk != NULL) {
-            if (next_free_chunk != NULL) {
-                prev_free_chunk->offset_next = distance;
-            } else {
-                prev_free_chunk->offset_next = 0;
+            if (chunk == block->free_list_head) {
+                block->free_list_head = next_free_chunk;
+            } else if (chunk == block->free_list_tail) {
+                ASSERT(next_free_chunk == NULL, "chunk is tail, but has next");
+                ASSERT(prev_free_chunk != NULL, "tail is not head, but has no prev");
+                block->free_list_tail = prev_free_chunk;
             }
-        }
-        if (next_free_chunk != NULL) {
-            if (prev_free_chunk != NULL) {
+
+            if (prev_free_chunk != NULL && next_free_chunk != NULL) {
+                distance = CHUNK_DISTANCE(next_free_chunk, prev_free_chunk);
+                prev_free_chunk->offset_next = distance;
                 next_free_chunk->offset_prev = distance;
-            } else {
+            } else if (prev_free_chunk != NULL) {
+                prev_free_chunk->offset_next = 0;
+            } else if (next_free_chunk != NULL) {
                 next_free_chunk->offset_prev = 0;
             }
         }
@@ -300,6 +265,8 @@ internal void heap_free_l(heap_t *locked_heap, chunk_header_t *chunk) {
 
     block            = CHUNK_PARENT_BLOCK(chunk);
     free_list_cursor = block->free_list_head;
+        
+    ASSERT(((void*)chunk) < block->end, "chunk doesn't belong to this block");
 
     chunk->offset_prev = chunk->offset_next = 0;
 
@@ -309,27 +276,43 @@ internal void heap_free_l(heap_t *locked_heap, chunk_header_t *chunk) {
         while (free_list_cursor != NULL && free_list_cursor < chunk) {
             free_list_cursor = CHUNK_NEXT(free_list_cursor);  
         }
-        
+       
         ASSERT(free_list_cursor != chunk, "can't free chunk that's in the free list");
 
-        prev_free_chunk = CHUNK_PREV(free_list_cursor);
-        next_free_chunk = free_list_cursor;
-
-        if (prev_free_chunk != NULL) {
-            distance                     = CHUNK_DISTANCE(chunk, prev_free_chunk);
-            prev_free_chunk->offset_next = distance;
-            chunk->offset_prev           = distance;
-        }
-        if (next_free_chunk != NULL) {
-            distance                     = CHUNK_DISTANCE(next_free_chunk, chunk);
-            next_free_chunk->offset_prev = distance;
-            chunk->offset_next           = distance;
+        if (free_list_cursor == NULL) {
+            /* This chunk is the last one. */
+            prev_free_chunk = block->free_list_tail;
+            next_free_chunk = NULL; /* No next chunk. */
+        } else {
+            prev_free_chunk = CHUNK_PREV(free_list_cursor);
+            next_free_chunk = free_list_cursor;
         }
 
-        if (chunk < block->free_list_head) {
-            block->free_list_head = chunk;
-        } else if (chunk > block->free_list_tail) {
-            block->free_list_tail = chunk;
+        if (prev_free_chunk == NULL && next_free_chunk == NULL) {
+            chunk->offset_prev = chunk->offset_next = 0;
+        } else {
+            if (prev_free_chunk != NULL) {
+                distance                     = CHUNK_DISTANCE(chunk, prev_free_chunk);
+                prev_free_chunk->offset_next = distance;
+                chunk->offset_prev           = distance;
+            } else if (next_free_chunk != NULL) {
+                distance                     = CHUNK_DISTANCE(next_free_chunk, chunk);
+                next_free_chunk->offset_prev = distance;
+                chunk->offset_next           = distance;
+            }
+        }
+
+        if (block->free_list_head != NULL) {
+            if (chunk < block->free_list_head) {
+                block->free_list_head = chunk;
+            }
+            if (chunk > block->free_list_tail) {
+                block->free_list_tail = chunk;
+            }
+
+            ASSERT(block->free_list_tail, "head, but no tail");
+        } else {
+            block->free_list_head = block->free_list_tail = chunk;
         }
     }
 

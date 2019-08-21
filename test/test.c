@@ -4,7 +4,8 @@
 int main() {
     void *ptr;
 
-    posix_memalign(&ptr, 4096 * 8, 40);
+    /* posix_memalign(&ptr, 4096 * 8, 40); */
+    ptr = malloc(4);
     printf("0x%llx\n", (unsigned long long)ptr);
     free(ptr);
     /* ptr = malloc(4); */

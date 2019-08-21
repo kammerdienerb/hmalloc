@@ -15,6 +15,11 @@
     #error "Can't represent this many threads."
 #endif
 
+#if !IS_POWER_OF_TWO_PP(HMALLOC_MAX_THREADS)
+    #error "HMALLOC_MAX_THREADS must be a power of two!"
+#endif
+
+#define LOG_2_HMALLOC_MAX_THREADS (LOG2_64BIT(HMALLOC_MAX_THREADS))
 
 typedef struct {
     heap_t heap;
@@ -23,8 +28,7 @@ typedef struct {
 
 internal thread_local_data_t thread_local_datas[HMALLOC_MAX_THREADS];
 internal u16                 n_thread_local_datas;
-internal pthread_mutex_t     thread_local_data_lock;
-internal pthread_key_t       thread_local_data_key;
+internal pthread_mutex_t     thread_local_data_lock = PTHREAD_MUTEX_INITIALIZER;
 
 internal void thread_local_data_init(thread_local_data_t *info, u16 id);
 internal void thread_local_data_fini(thread_local_data_t *info);
