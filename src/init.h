@@ -13,7 +13,7 @@ internal pthread_mutex_t hmalloc_init_lock = PTHREAD_MUTEX_INITIALIZER;
 internal int hmalloc_is_initialized = 0;
 
 
-__attribute__((constructor)) internal void hmalloc_init(void);
-__attribute__((destructor))  internal void hmalloc_fini(void);
+internal void hmalloc_init(void);
+internal void hmalloc_fini(void);
 
 #endif

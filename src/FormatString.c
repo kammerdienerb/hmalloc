@@ -40,7 +40,7 @@ int precision,bool forceperiod,bool uppercase,bool *isinf,bool *isnan);
 static int OutputDigitString(FormatOutputFunction *outputfunc,void *context,
 const char *prefix,int numextrazeroes,const char *digitstring,int numdigits,bool padright,int width);
 
-int FormatString(FormatOutputFunction *outputfunc,void *context,const char *format,va_list args)
+static int FormatString(FormatOutputFunction *outputfunc,void *context,const char *format,va_list args)
 {
 	int count=0;
 
@@ -419,7 +419,7 @@ bool padright,bool padzero,int width,int precision)
 #include <math.h>
 
 /* copysign isn't available in C89... */
-double
+static double
 copysign (double x, double y)
 {
   if ((x < 0 && y > 0) || (x > 0 && y < 0))
@@ -618,7 +618,7 @@ static void SprintfOutputFunction(char c,void *context)
 	(*stringptr)++;
 }
 
-int sprintf(char *buffer,const char *format,...)
+static int sprintf(char *buffer,const char *format,...)
 {
 	va_list args;
 	va_start(args,format);

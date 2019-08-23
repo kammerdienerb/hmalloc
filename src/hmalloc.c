@@ -2,7 +2,7 @@
 #include "internal.h"
 
 #include "FormatString.c"
-
+#include "internal.c"
 #include "heap.c"
 #include "thread.c"
 #include "os.c"

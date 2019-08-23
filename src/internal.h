@@ -37,30 +37,11 @@
 #define external extern
 
 #include "FormatString.h"
-internal void hmalloc_putc(char c, void *context) {
-    (void)context;
-    write(2, &c, 1);
-}
-internal void hmalloc_printf(const char *fmt, ...) {
-    va_list va;
-    
-    va_start(va, fmt);
-    FormatString(hmalloc_putc, NULL, fmt, va);
-    va_end(va);
-}
+internal void hmalloc_putc(char c, void *context);
+internal void hmalloc_printf(const char *fmt, ...);
 
 #ifdef HMALLOC_DO_ASSERTIONS
-internal void hmalloc_assert_fail(const char *msg, const char *fname, int line, const char *cond_str) {
-    volatile int *trap;
-
-    hmalloc_printf("Assertion failed -- %s\n"
-                   "at  %s :: line %d\n"
-                   "    Condition: '%s'\n"
-                   , msg, fname, line, cond_str);
-    
-    trap = 0;
-    (void)*trap;
-}
+internal void hmalloc_assert_fail(const char *msg, const char *fname, int line, const char *cond_str);
 #define ASSERT(cond, msg)                                \
 if (!(cond)) {                                           \
     hmalloc_assert_fail(msg, __FILE__, __LINE__, #cond); \
@@ -102,5 +83,14 @@ if (!(cond)) {                                           \
     (32*((v)/2L>>31 > 0) \
      + LOG2_32BIT((v)*1L >>16*((v)/2L>>31 > 0) \
                          >>16*((v)/2L>>31 > 0)))
+
+
+#define KiB(x) ((x) * 1024ULL)
+#define MiB(x) ((x) * 1024ULL * KiB(1ULL))
+#define GiB(x) ((x) * 1024ULL * MiB(1ULL))
+#define TiB(x) ((x) * 1024ULL * GiB(1ULL))
+
+/* #define DEFAULT_BLOCK_SIZE (KiB(4)) */
+#define DEFAULT_BLOCK_SIZE (MiB(4))
 
 #endif

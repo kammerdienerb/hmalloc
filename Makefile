@@ -1,8 +1,8 @@
 CFG_DEB=-g -O0 -DHMALLOC_DO_ASSERTIONS -DHMALLOC_DO_LOGGING
 CFG_REL=-O3
 
-# CFG=$(CFG_DEB)
-CFG=$(CFG_REL)
+CFG=$(CFG_DEB)
+# CFG=$(CFG_REL)
 
 C_FLAGS=-ansi -shared -fPIC -lpthread -lm -Wall -Werror -Wno-unused-function $(CFG)
 
@@ -17,7 +17,7 @@ lib:
 check: lib
 
 tests: clean lib
-	cd test && make && ./runtest.sh test_pp
+	cd test && make && ./runtest.sh test
 
 clean:
 	rm -rf lib

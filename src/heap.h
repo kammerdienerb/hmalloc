@@ -6,7 +6,6 @@
 #include <pthread.h>
 
 
-
 /* Chunk header flags */
 #define CHUNK_IS_FREE (UINT16_C(0x0001))
 #define CHUNK_IS_BIG  (UINT16_C(0x0002))
@@ -74,9 +73,6 @@ typedef struct {
 
 #define CHUNK_PARENT_BLOCK(addr) ((block_header_t*)(((void*)(addr)) - ((chunk_header_t*)addr)->offset_block))
 
-
-
-#define DEFAULT_BLOCK_PAGES (4);
 
 typedef struct block_header {
     chunk_header_t      *free_list_head,

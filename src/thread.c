@@ -3,10 +3,12 @@
 #include "heap.h"
 #include "init.h"
 
-internal void thread_local_data_init(thread_local_data_t *info, u16 id) {
-    info->id              = id;
+internal void thread_local_data_init(thread_local_data_t *info, u16 idx, pthread_t tid) {
     info->heap            = heap_make();
-    info->heap.thread_idx = id;
+    info->heap.thread_idx = idx;
+    info->idx             = idx;
+    info->tid             = tid;
+    info->is_valid        = 1;
 }
 
 internal void thread_local_data_fini(thread_local_data_t *info) {
@@ -22,29 +24,35 @@ internal void thread_local_fini(void) {
     LOG("finished thread-local data\n");
 }
 
-internal __thread thread_local_data_t *t_local;
-
 internal thread_local_data_t* get_thread_local_struct(void) {
     thread_local_data_t *info;
     u16                  idx;
+    pthread_t            tid;
 
-    if (t_local == NULL) {
-        pthread_mutex_lock(&thread_local_data_lock);
-            /* Ensure our system is initialized. */
-            hmalloc_init(); 
+    /* I know this isn't techinically portable but... */
+    tid  = pthread_self();
+    idx  = ((u64)tid) & (HMALLOC_MAX_THREADS - 1);
+    info = thread_local_datas + idx;
 
-            ASSERT(n_thread_local_datas < HMALLOC_MAX_THREADS,
-                   "exceeded the maximum number of threads");
-
-            idx  = n_thread_local_datas++;
-            info = thread_local_datas + idx;
-            thread_local_data_init(info, idx);
-
-            LOG("initialized thread-local data %hu\n", idx);
-        pthread_mutex_unlock(&thread_local_data_lock);
-
-        t_local = info;
+    while (info->is_valid) {
+        if (info->tid == tid) {
+            return info;
+        }
+        info = thread_local_datas + idx++;
     }
 
-    return t_local;
+    /* Create the new thread_local_data_t. */
+    pthread_mutex_lock(&thread_local_data_lock);
+        /* Ensure our system is initialized. */
+        hmalloc_init(); 
+
+        /* ASSERT(n_thread_local_datas < HMALLOC_MAX_THREADS, */
+        /*        "exceeded the maximum number of threads"); */
+
+        thread_local_data_init(info, idx, tid);
+
+        LOG("initialized thread-local data %hu\n", idx);
+    pthread_mutex_unlock(&thread_local_data_lock);
+
+    return info;
 }
