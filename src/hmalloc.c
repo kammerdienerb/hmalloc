@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "hmalloc.h"
 #include "internal.h"
 
@@ -13,11 +15,14 @@
 #include <errno.h>
 
 external void *hmalloc_malloc(size_t n_bytes) {
-    thread_local_data_t *local;
+    thread_data_t *thr;
+    void          *addr;
 
-    local = get_thread_local_struct();
-    void * p = heap_alloc(&local->heap, n_bytes);
-    return p;
+    thr  = acquire_this_thread();
+    addr = heap_alloc(&thr->heap, n_bytes);
+    release_thread(thr);
+
+    return addr;
 }
 
 external void * hmalloc_calloc(size_t count, size_t n_bytes) {
@@ -28,50 +33,69 @@ external void * hmalloc_calloc(size_t count, size_t n_bytes) {
     addr        = hmalloc_malloc(new_n_bytes);
 
     memset(addr, 0, new_n_bytes);
-
+    
     return addr;
 }
 
 external void * hmalloc_realloc(void *addr, size_t n_bytes) {
-    hmalloc_free(addr);
-    return hmalloc_malloc(n_bytes);
+    void *new_addr;
+    u64   old_size,
+          copy_size;
+
+    n_bytes += (n_bytes == 0);
+
+    new_addr = hmalloc_malloc(n_bytes);
+
+    if (addr != NULL) {
+        old_size  = hmalloc_malloc_size(addr);
+        copy_size = old_size;
+        if (n_bytes < copy_size) {
+            copy_size = n_bytes;
+        }
+        memcpy(new_addr, addr, copy_size);
+        hmalloc_free(addr);
+    }
+    return new_addr;
 }
 external void * hmalloc_reallocf(void *addr, size_t n_bytes) { return hmalloc_realloc(addr, n_bytes); }
 
 external void * hmalloc_valloc(size_t n_bytes) {
-    thread_local_data_t *local;
+    thread_data_t *thr;
+    void          *addr;
     
-    local = get_thread_local_struct();
+    thr  = acquire_this_thread();
+    addr = heap_aligned_alloc(&thr->heap, n_bytes, system_info.page_size);
+    release_thread(thr);
 
-    return heap_aligned_alloc(&local->heap, n_bytes, system_info.page_size);
+    return addr;
 }
 
 external void hmalloc_free(void *addr) {
-    chunk_header_t      *chunk;
-    thread_local_data_t *thread_data;
-    
+    chunk_header_t *chunk;
+    thread_data_t  *thr;
+
     if (addr == NULL) {
         return;
     }
-
+    
     chunk = CHUNK_FROM_USER_MEM(addr);
 
-    thread_data = thread_local_datas + chunk->thread_idx;
-
-    heap_free(&thread_data->heap, chunk);
+    thr = acquire_thread(chunk->tid);
+    heap_free(&thr->heap, chunk);
+    release_thread(thr);
 }
 
 external int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_bytes) {
-    thread_local_data_t *local;
+    thread_data_t *thr;
   
     if (!IS_POWER_OF_TWO(alignment)
     ||  alignment < sizeof(void*)) {
         return EINVAL;
     }
 
-    local = get_thread_local_struct();
-
-    *memptr = heap_aligned_alloc(&local->heap, n_bytes, alignment);
+    thr     = acquire_this_thread();
+    *memptr = heap_aligned_alloc(&thr->heap, n_bytes, alignment);
+    release_thread(thr);
 
     if (*memptr == NULL)    { return ENOMEM; }
     return 0;
@@ -90,7 +114,7 @@ external void * calloc(size_t count, size_t n_bytes) { return hmalloc_calloc(cou
 external void * realloc(void *addr, size_t n_bytes)  { return hmalloc_realloc(addr, n_bytes);  }
 external void * reallocf(void *addr, size_t n_bytes) { return hmalloc_reallocf(addr, n_bytes); }
 external void * valloc(size_t n_bytes)               { return hmalloc_valloc(n_bytes);         }
-external void * pvalloc(size_t n_bytes) { ASSERT(0, "pvalloc"); return NULL; }
+external void * pvalloc(size_t n_bytes)              { ASSERT(0, "pvalloc"); return NULL;      }
 external void   free(void *addr)                     { hmalloc_free(addr);                     }
 
 external int posix_memalign(void **memptr, size_t alignment, size_t size) {

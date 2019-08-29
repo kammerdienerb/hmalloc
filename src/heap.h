@@ -31,7 +31,7 @@ typedef struct {
     union {
         struct {
             u16 flags;
-            u16 thread_idx;
+            u16 tid;
         };
         u32 __meta;
     };
@@ -86,17 +86,24 @@ typedef struct block_header {
 #define LARGEST_CHUNK_IN_EMPTY_N_PAGE_BLOCK(N) \
     (((system_info.page_size) * (N)) - sizeof(block_header_t) - sizeof(chunk_header_t))
 
+
+
+#define HEAP_QL_TINY_CHUNK_SIZE     (KiB(2))
+#define HEAP_QL_TINY_ARRAY_SIZE     (1024)
+#define HEAP_QL_NOT_TINY_ARRAY_SIZE (64)
+
 typedef struct {
-    u16              thread_idx;
-    block_header_t  *blocks_head,
-                    *blocks_tail;
-    pthread_mutex_t  mtx;
+    u16               tid;
+    block_header_t   *blocks_head,
+                     *blocks_tail;
+    chunk_header_t   *quick_list_tiny[HEAP_QL_TINY_ARRAY_SIZE],
+                    **quick_list_tiny_p,
+                     *quick_list_not_tiny[HEAP_QL_NOT_TINY_ARRAY_SIZE],
+                    **quick_list_not_tiny_p;
 } heap_t;
 
-#define HEAP_LOCK(heap_ptr)   do { pthread_mutex_lock(&((heap_ptr)->mtx));   } while (0)
-#define HEAP_UNLOCK(heap_ptr) do { pthread_mutex_unlock(&((heap_ptr)->mtx)); } while (0)
 
-internal heap_t heap_make(void);
+internal void heap_make(heap_t *heap);
 internal void * heap_alloc(heap_t *heap, u64 n_bytes);
 
 #endif

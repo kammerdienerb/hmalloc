@@ -8,6 +8,10 @@
 #include <linux/mman.h> /* linux mmap flags */
 #endif
 
+#include <unistd.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
+
 
 internal void system_info_init(void) {
     i64 page_size;
@@ -41,7 +45,7 @@ internal void * get_pages_from_os(u32 n_pages) {
                 -1,
                 (off_t)0);
 
-    if (addr == MAP_FAILED) {
+    if (addr == MAP_FAILED || addr == NULL) {
         LOG("ERROR -- could not get %u pages (%llu bytes) from OS\n", n_pages, n_pages * system_info.page_size);
         return NULL;
     }
@@ -59,3 +63,22 @@ internal void release_pages_to_os(void *addr, u32 n_pages) {
     (void)err_code;
 }
 
+__thread int thr_handle;
+
+internal u32 get_this_thread_hash(void) {
+    u32 handle;
+
+    /*
+     * Use Knuth's multiplicative method to hash
+     * the thread local storage pointer.
+     */
+
+    handle = (u32)((u64)(&thr_handle) >> 13);
+    return handle * UINT32_C(2654435761);
+}
+
+internal pid_t os_get_tid(void) {
+    return (pid_t)((u64)&thr_handle >> 11);
+    /* return (pid_t)get_this_thread_hash(); */
+    /* return syscall(SYS_gettid); */
+}

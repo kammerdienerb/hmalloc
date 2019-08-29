@@ -21,22 +21,24 @@
 
 #define LOG_2_HMALLOC_MAX_THREADS (LOG2_64BIT(HMALLOC_MAX_THREADS))
 
+typedef u16 hm_tid_t;
+
 typedef struct {
-    heap_t    heap;
-    u16       idx;
-    pthread_t tid;
-    int       is_valid;
-} thread_local_data_t;
+    heap_t          heap;
+    hm_tid_t        tid;
+    pthread_mutex_t mtx;
+    int             is_valid;
+} thread_data_t;
 
-internal thread_local_data_t thread_local_datas[HMALLOC_MAX_THREADS];
-/* internal u16                 n_thread_local_datas; */
-internal pthread_mutex_t     thread_local_data_lock = PTHREAD_MUTEX_INITIALIZER;
+internal thread_data_t thread_datas[HMALLOC_MAX_THREADS];
 
-internal void thread_local_data_init(thread_local_data_t *info, u16 idx, pthread_t tid);
-internal void thread_local_data_fini(thread_local_data_t *info);
+internal void threads_init(void);
+internal void thread_init(thread_data_t *thr, hm_tid_t tid);
+internal thread_data_t * acquire_this_thread(void);
+internal thread_data_t * acquire_thread(hm_tid_t tid);
+internal void release_thread(thread_data_t *thr);
 
-internal void thread_local_init(void);
-internal void thread_local_fini(void);
-internal thread_local_data_t* get_thread_local_struct(void);
+#define THR_LOCK(thr_ptr)   HMALLOC_MTX_LOCKER(&thr_ptr->mtx)
+#define THR_UNLOCK(thr_ptr) HMALLOC_MTX_UNLOCKER(&thr_ptr->mtx)
 
 #endif

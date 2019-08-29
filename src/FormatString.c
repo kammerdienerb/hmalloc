@@ -418,15 +418,6 @@ bool padright,bool padzero,int width,int precision)
 
 #include <math.h>
 
-/* copysign isn't available in C89... */
-static double
-copysign (double x, double y)
-{
-  if ((x < 0 && y > 0) || (x > 0 && y < 0))
-    return -x;
-  return x;
-}
-
 static int OutputFloatingPoint(FormatOutputFunction *outputfunc,void *context,
 double value,const char *positiveprefix,bool padright,bool padzero,
 bool forceperiod,bool uppercase,int width,int precision)

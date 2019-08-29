@@ -1,17 +1,17 @@
 CFG_DEB=-g -O0 -DHMALLOC_DO_ASSERTIONS -DHMALLOC_DO_LOGGING
 CFG_REL=-O3
 
-CFG=$(CFG_DEB)
-# CFG=$(CFG_REL)
+# CFG=$(CFG_DEB)
+CFG=$(CFG_REL)
 
 C_FLAGS=-ansi -shared -fPIC -lpthread -lm -Wall -Werror -Wno-unused-function $(CFG)
 
 # CC=gcc-9
 
-all: clean lib
+all: the_lib
 
-lib:
-	mkdir -p lib
+the_lib:
+	@mkdir -p lib
 	$(CC) src/hmalloc.c $(C_FLAGS) -o lib/libhmalloc.so
 
 check: lib

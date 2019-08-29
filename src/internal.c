@@ -1,15 +1,23 @@
 #include "internal.h"
 
+#include <pthread.h>
+
+internal pthread_mutex_t log_mtx = PTHREAD_MUTEX_INITIALIZER;
+
 internal void hmalloc_putc(char c, void *context) {
     (void)context;
     write(2, &c, 1);
 }
 internal void hmalloc_printf(const char *fmt, ...) {
     va_list va;
+
+    pthread_mutex_lock(&log_mtx);
     
     va_start(va, fmt);
     FormatString(hmalloc_putc, NULL, fmt, va);
     va_end(va);
+    
+    pthread_mutex_unlock(&log_mtx);
 }
 
 #ifdef HMALLOC_DO_ASSERTIONS

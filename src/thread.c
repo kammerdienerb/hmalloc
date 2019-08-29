@@ -1,58 +1,58 @@
 #include "internal.h"
 #include "thread.h"
 #include "heap.h"
+#include "os.h"
 #include "init.h"
 
-internal void thread_local_data_init(thread_local_data_t *info, u16 idx, pthread_t tid) {
-    info->heap            = heap_make();
-    info->heap.thread_idx = idx;
-    info->idx             = idx;
-    info->tid             = tid;
-    info->is_valid        = 1;
-}
+internal void threads_init(void) {
+    int i;
 
-internal void thread_local_data_fini(thread_local_data_t *info) {
-
-}
-
-internal void thread_local_init(void) {
-    LOG("initialized thread-local data management\n");
-}
-
-internal void thread_local_fini(void) {
-    pthread_mutex_destroy(&thread_local_data_lock);
-    LOG("finished thread-local data\n");
-}
-
-internal thread_local_data_t* get_thread_local_struct(void) {
-    thread_local_data_t *info;
-    u16                  idx;
-    pthread_t            tid;
-
-    /* I know this isn't techinically portable but... */
-    tid  = pthread_self();
-    idx  = ((u64)tid) & (HMALLOC_MAX_THREADS - 1);
-    info = thread_local_datas + idx;
-
-    while (info->is_valid) {
-        if (info->tid == tid) {
-            return info;
-        }
-        info = thread_local_datas + idx++;
+    for (i = 0; i < HMALLOC_MAX_THREADS; i += 1) {
+        pthread_mutex_init(&(thread_datas[i].mtx), NULL);
     }
 
-    /* Create the new thread_local_data_t. */
-    pthread_mutex_lock(&thread_local_data_lock);
-        /* Ensure our system is initialized. */
-        hmalloc_init(); 
+    LOG("initialized threads\n");
+}
 
-        /* ASSERT(n_thread_local_datas < HMALLOC_MAX_THREADS, */
-        /*        "exceeded the maximum number of threads"); */
+internal void thread_init(thread_data_t *thr, hm_tid_t tid) {
+    heap_make(&thr->heap);
+    thr->heap.tid = tid;
+    thr->tid      = tid;
+    thr->is_valid = 1;
 
-        thread_local_data_init(info, idx, tid);
+    LOG("initialized a new thread with tid %hu\n", tid);
+}
 
-        LOG("initialized thread-local data %hu\n", idx);
-    pthread_mutex_unlock(&thread_local_data_lock);
+internal thread_data_t * acquire_this_thread(void) {
+    pid_t    os_tid;
+    hm_tid_t tid;
 
-    return info;
+    /* Ensure our system is initialized. */
+    hmalloc_init();
+
+    os_tid = os_get_tid();
+    tid    = os_tid & (HMALLOC_MAX_THREADS - 1);
+
+    return acquire_thread(tid);
+}
+
+internal thread_data_t * acquire_thread(hm_tid_t tid) {
+    thread_data_t *thr;
+
+    /* Ensure our system is initialized. */
+    hmalloc_init();
+
+    thr = thread_datas + tid;
+
+    THR_LOCK(thr);
+
+    if (!thr->is_valid) {
+        thread_init(thr, tid);
+    }
+
+    return thr;
+}
+
+internal void release_thread(thread_data_t *thr) {
+    THR_UNLOCK(thr);
 }

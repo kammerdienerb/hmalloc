@@ -7,8 +7,6 @@
 
 
 
-
-
 /* #define HMALLOC_DO_LOGGING */
 /* #define HMALLOC_DO_ASSERTIONS */
 #define HMALLOC_ANSI_C
@@ -16,8 +14,6 @@
 #ifdef HMALLOC_ANSI_C
 #define inline
 #endif
-
-
 
 
 #define UINT(w) uint##w##_t
@@ -92,5 +88,8 @@ if (!(cond)) {                                           \
 
 /* #define DEFAULT_BLOCK_SIZE (KiB(4)) */
 #define DEFAULT_BLOCK_SIZE (MiB(4))
+
+#define HMALLOC_MTX_LOCKER(mtx_ptr)   do { pthread_mutex_lock(mtx_ptr);   } while (0)
+#define HMALLOC_MTX_UNLOCKER(mtx_ptr) do { pthread_mutex_unlock(mtx_ptr); } while (0)
 
 #endif

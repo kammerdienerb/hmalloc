@@ -19,7 +19,9 @@ internal void hmalloc_init(void) {
             hmalloc_is_initialized = 1;
 
             system_info_init();
-            thread_local_init();
+            threads_init();
+            /* thread_local_init(); */
+            /* main_thread_init(); */
         } INIT_UNLOCK();
     }
 }
