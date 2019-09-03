@@ -65,20 +65,27 @@ internal void release_pages_to_os(void *addr, u32 n_pages) {
 
 __thread int thr_handle;
 
-internal u32 get_this_thread_hash(void) {
-    u32 handle;
+internal pid_t os_get_tid(void) {
+    pid_t tid;
 
     /*
-     * Use Knuth's multiplicative method to hash
-     * the thread local storage pointer.
+     * Use the address of a thread-local storage
+     * variable to give us a value that changes per
+     * thread.
+     *
+     * We shift by eleven because that number seemed to
+     * align with what the addresses were multiples of 
+     * on the test OS.
+     *
+     * Should be pretty fast.
      */
-
-    handle = (u32)((u64)(&thr_handle) >> 13);
-    return handle * UINT32_C(2654435761);
-}
-
-internal pid_t os_get_tid(void) {
-    return (pid_t)((u64)&thr_handle >> 11);
-    /* return (pid_t)get_this_thread_hash(); */
+    tid = (pid_t)((u64)&thr_handle >> 11);
+    
+    /*
+     * This method is slower because of the system call
+     * overhead, but it gives us less collisions.. 
+     */
     /* return syscall(SYS_gettid); */
+    
+    return tid;
 }

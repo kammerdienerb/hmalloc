@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 
 
@@ -11,10 +14,14 @@
 /* #define HMALLOC_DO_ASSERTIONS */
 #define HMALLOC_ANSI_C
 
+#define HMALLOC_USE_QUICKLIST
+
 #ifdef HMALLOC_ANSI_C
 #define inline
 #endif
 
+#define MIN(a, b) ((a) <= (b) ? (a) : (b))
+#define MAX(a, b) ((a) >= (b) ? (a) : (b))
 
 #define UINT(w) uint##w##_t
 #define SINT(w) int##w##_t
@@ -33,27 +40,31 @@
 #define external extern
 
 #include "FormatString.h"
-internal void hmalloc_putc(char c, void *context);
-internal void hmalloc_printf(const char *fmt, ...);
+internal void hmalloc_putc(char c, void *fd);
+internal void hmalloc_printf(int fd, const char *fmt, ...);
 
 #ifdef HMALLOC_DO_ASSERTIONS
 internal void hmalloc_assert_fail(const char *msg, const char *fname, int line, const char *cond_str);
-#define ASSERT(cond, msg)                                \
-if (!(cond)) {                                           \
-    hmalloc_assert_fail(msg, __FILE__, __LINE__, #cond); \
-}
+#define ASSERT(cond, msg)                               \
+do { if (!(cond)) {                                     \
+    hmalloc_assert_fail(msg, __FILE__, __LINE__, #cond);\
+} } while (0)
 #else
 #define ASSERT(cond, mst) ;
 #endif
 
 #ifdef HMALLOC_DO_LOGGING
+internal int log_fd = 1;
 #define LOG(fmt, ...) \
-    hmalloc_printf("[ hmalloc :: %-12s :: %3d ] " fmt "", __FILE__, __LINE__, ##__VA_ARGS__)
+    hmalloc_printf(log_fd, "[ hmalloc :: %-15s :: %3d ] " fmt "", __FILE__, __LINE__, ##__VA_ARGS__)
+
+void log_init(void);
+
 #else
 #define LOG(fmt, ...) ;
 #endif
 
-#define XOR_SWAP_64(a, b) do {    \
+#define XOR_SWAP_64(a, b) do {   \
     a = ((u64)(a)) ^ ((u64)(b)); \
     b = ((u64)(b)) ^ ((u64)(a)); \
     a = ((u64)(a)) ^ ((u64)(b)); \
@@ -73,11 +84,11 @@ if (!(cond)) {                                           \
 
 #define LOG2_8BIT(v)  (8 - 90/(((v)/4+14)|1) - 2/((v)/2+1))
 #define LOG2_16BIT(v) (8*((v)>255) + LOG2_8BIT((v) >>8*((v)>255)))
-#define LOG2_32BIT(v) \
+#define LOG2_32BIT(v)                                        \
     (16*((v)>65535L) + LOG2_16BIT((v)*1L >>16*((v)>65535L)))
-#define LOG2_64BIT(v)\
-    (32*((v)/2L>>31 > 0) \
-     + LOG2_32BIT((v)*1L >>16*((v)/2L>>31 > 0) \
+#define LOG2_64BIT(v)                                        \
+    (32*((v)/2L>>31 > 0)                                     \
+     + LOG2_32BIT((v)*1L >>16*((v)/2L>>31 > 0)               \
                          >>16*((v)/2L>>31 > 0)))
 
 
@@ -86,10 +97,12 @@ if (!(cond)) {                                           \
 #define GiB(x) ((x) * 1024ULL * MiB(1ULL))
 #define TiB(x) ((x) * 1024ULL * GiB(1ULL))
 
-/* #define DEFAULT_BLOCK_SIZE (KiB(4)) */
-#define DEFAULT_BLOCK_SIZE (MiB(4))
+#define DEFAULT_BLOCK_SIZE (MiB(2))
 
 #define HMALLOC_MTX_LOCKER(mtx_ptr)   do { pthread_mutex_lock(mtx_ptr);   } while (0)
 #define HMALLOC_MTX_UNLOCKER(mtx_ptr) do { pthread_mutex_unlock(mtx_ptr); } while (0)
+
+#define LOG_LOCK()   HMALLOC_MTX_LOCKER(&log_mtx)
+#define LOG_UNLOCK() HMALLOC_MTX_UNLOCKER(&log_mtx)
 
 #endif

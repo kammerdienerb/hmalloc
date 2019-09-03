@@ -2,7 +2,15 @@
 #include "os.h"
 #include "thread.h"
 
-/* __attribute__((constructor)) */
+#include <stddef.h>
+
+internal void perform_sanity_checks(void) {
+    chunk_header_t c;
+    (void)c;
+
+    ASSERT(sizeof(c) == 8, "chunk_header_t is invalid");
+}
+
 internal void hmalloc_init(void) {
     /*
      * Thread-unsafe check for performance.
@@ -16,12 +24,15 @@ internal void hmalloc_init(void) {
                 return;
             }
 
+            perform_sanity_checks();
+
             hmalloc_is_initialized = 1;
 
+#ifdef HMALLOC_DO_LOGGING
+            log_init();
+#endif
             system_info_init();
             threads_init();
-            /* thread_local_init(); */
-            /* main_thread_init(); */
         } INIT_UNLOCK();
     }
 }

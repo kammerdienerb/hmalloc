@@ -6,10 +6,6 @@
 #include <string.h>
 #include <pthread.h>
 
-internal void zero_chunk_header(chunk_header_t *chunk) {
-    memset(chunk, 0, sizeof(*chunk));
-}
-
 internal block_header_t * heap_new_block(heap_t *heap, u64 n_bytes) {
     u32             n_pages;
     u64             avail;
@@ -22,6 +18,8 @@ internal block_header_t * heap_new_block(heap_t *heap, u64 n_bytes) {
         n_pages += 1;
     }
 
+    ASSERT(IS_ALIGNED(avail, 8), "block memory isn't aligned properly");
+
     block       = get_pages_from_os(n_pages);
     block->end  = ((void*)block) + (n_pages * system_info.page_size); 
     block->next = NULL;
@@ -29,11 +27,10 @@ internal block_header_t * heap_new_block(heap_t *heap, u64 n_bytes) {
     /* Create the first and only chunk in the block. */
     chunk = BLOCK_FIRST_CHUNK(block);
 
-    zero_chunk_header(chunk);
+    chunk->__header = 0;
 
     chunk->flags |= CHUNK_IS_FREE;
-    chunk->size   = avail;
-    chunk->tid    = heap->tid;
+    SET_CHUNK_SIZE(chunk, avail);
 
     block->free_list_head = block->free_list_tail = chunk;
 
@@ -60,8 +57,6 @@ internal void heap_release_block(heap_t *heap, block_header_t *block) {
         }
     }
 
-    LOG("releasing block\n");
-
     release_pages_to_os((void*)block, ((block->end - ((void*)block)) >> system_info.log_2_page_size));
 }
 
@@ -78,8 +73,10 @@ internal void heap_add_block(heap_t *heap, block_header_t *block) {
 internal void heap_make(heap_t *heap) {
     heap->blocks_head = heap->blocks_tail = NULL;
 
+#ifdef HMALLOC_USE_QUICKLIST
     heap->quick_list_tiny_p     = heap->quick_list_tiny;
     heap->quick_list_not_tiny_p = heap->quick_list_not_tiny;
+#endif
 
     LOG("Created a new heap\n");
 }
@@ -91,29 +88,34 @@ internal void block_add_chunk_to_free_list(block_header_t *block, chunk_header_t
 
     ASSERT(((void*)chunk) < block->end, "chunk doesn't belong to this block");
 
-    chunk->offset_prev = chunk->offset_next = 0;
+    chunk->flags |= CHUNK_IS_FREE;
+    SET_CHUNK_OFFSET_PREV(chunk, 0);
+    SET_CHUNK_OFFSET_NEXT(chunk, 0);
 
     if (block->free_list_head == NULL) {
         /* This will be the only chunk on the free list. */
         ASSERT(block->free_list_tail == NULL, "tail, but no head");
 
         block->free_list_head = block->free_list_tail = chunk;
+
     } else if (chunk < block->free_list_head) {
         /* It should be the new head. */
         distance = CHUNK_DISTANCE(block->free_list_head, chunk);
 
-        chunk->offset_next                 = distance;
-        block->free_list_head->offset_prev = distance;
+        SET_CHUNK_OFFSET_PREV(block->free_list_head, distance);
+        SET_CHUNK_OFFSET_NEXT(chunk, distance);
 
         block->free_list_head = chunk;
+
     } else if (block->free_list_tail < chunk) {
         /* It should be the new tail. */
         distance = CHUNK_DISTANCE(chunk, block->free_list_tail);
 
-        chunk->offset_prev                 = distance;
-        block->free_list_tail->offset_next = distance;
+        SET_CHUNK_OFFSET_PREV(chunk, distance);
+        SET_CHUNK_OFFSET_NEXT(block->free_list_tail, distance);
         
         block->free_list_tail = chunk;
+
     } else {
         /* We'll have to find the right place for it. */
         free_list_cursor = block->free_list_tail;
@@ -129,27 +131,23 @@ internal void block_add_chunk_to_free_list(block_header_t *block, chunk_header_t
         ASSERT(free_list_cursor != NULL, "didn't find place in free list");
 
         next_free_chunk = CHUNK_NEXT(free_list_cursor);
-       
-        ASSERT(next_free_chunk != NULL, "bad next_free_chunk");
+
+        ASSERT(next_free_chunk != NULL, "didn't find next place in free list");
         ASSERT(next_free_chunk > chunk, "bad distance");
+
+        /* Patch with previous chunk. */
+        distance = CHUNK_DISTANCE(chunk, free_list_cursor);
+        SET_CHUNK_OFFSET_NEXT(free_list_cursor, distance);
+        SET_CHUNK_OFFSET_PREV(chunk, distance);
 
         /* Patch with next chunk. */
         distance = CHUNK_DISTANCE(next_free_chunk, chunk);
-
-        chunk->offset_next           = distance;
-        next_free_chunk->offset_prev = distance;
-
-        /* Patch with prev chunk. */
-        distance = CHUNK_DISTANCE(chunk, free_list_cursor);
-
-        free_list_cursor->offset_next = distance;
-        chunk->offset_prev            = distance;
+        SET_CHUNK_OFFSET_NEXT(chunk, distance);
+        SET_CHUNK_OFFSET_PREV(next_free_chunk, distance);
     }
-
-    chunk->flags |= CHUNK_IS_FREE;
 }
 
-internal void block_remove_chunk_from_free_list(block_header_t *block, chunk_header_t *chunk) {
+internal void block_remove_chunk_from_free_list(heap_t *heap, block_header_t *block, chunk_header_t *chunk) {
     chunk_header_t *prev_free_chunk,
                    *next_free_chunk;
     u64             distance;
@@ -162,7 +160,7 @@ internal void block_remove_chunk_from_free_list(block_header_t *block, chunk_hea
 
         ASSERT(next_free_chunk != NULL, "head is not only free chunk, but has no next");
 
-        next_free_chunk->offset_prev = 0;
+        SET_CHUNK_OFFSET_PREV(next_free_chunk, 0);
         block->free_list_head        = next_free_chunk;
 
     } else if (chunk == block->free_list_tail) {
@@ -170,8 +168,9 @@ internal void block_remove_chunk_from_free_list(block_header_t *block, chunk_hea
 
         ASSERT(prev_free_chunk != NULL, "tail is not only free chunk, but has no prev");
 
-        prev_free_chunk->offset_next = 0;
-        block->free_list_tail        = prev_free_chunk;
+        SET_CHUNK_OFFSET_NEXT(prev_free_chunk, 0);
+
+        block->free_list_tail = prev_free_chunk;
 
     } else {
         prev_free_chunk = CHUNK_PREV(chunk);
@@ -182,12 +181,13 @@ internal void block_remove_chunk_from_free_list(block_header_t *block, chunk_hea
         ASSERT(next_free_chunk > prev_free_chunk, "bad distance");
 
         distance = CHUNK_DISTANCE(next_free_chunk, prev_free_chunk);
-        prev_free_chunk->offset_next = distance;
-        next_free_chunk->offset_prev = distance;
+        SET_CHUNK_OFFSET_PREV(next_free_chunk, distance);
+        SET_CHUNK_OFFSET_NEXT(prev_free_chunk, distance);
     }
 
-    chunk->offset_block = CHUNK_DISTANCE(chunk, block);
-    chunk->flags       &= ~CHUNK_IS_FREE;
+    chunk->flags &= ~CHUNK_IS_FREE;
+    chunk->tid    = heap->tid;
+    SET_CHUNK_OFFSET_BLOCK(chunk, block);
 }
 
 internal void block_split_chunk(block_header_t *block, chunk_header_t *chunk, u64 n_bytes) {
@@ -195,27 +195,33 @@ internal void block_split_chunk(block_header_t *block, chunk_header_t *chunk, u6
 
     ASSERT(block->free_list_head != NULL, "should have free chunk(s) to split");
     ASSERT(chunk->flags & CHUNK_IS_FREE, "can't split chunk that isn't free");
+    ASSERT(IS_ALIGNED(CHUNK_USER_MEM(chunk), 8), "user mem is misaligned");
+    ASSERT(IS_ALIGNED(n_bytes, 8), "size is misaligned");
 
-    new_chunk         = CHUNK_USER_MEM(chunk) + n_bytes;
-    new_chunk->__meta = chunk->__meta;
-    new_chunk->size   = ((void*)SMALL_CHUNK_ADJACENT(chunk)) - CHUNK_USER_MEM(new_chunk);
+    new_chunk           = CHUNK_USER_MEM(chunk) + n_bytes;
+    new_chunk->__header = 0;
 
-    chunk->size = n_bytes;
+    SET_CHUNK_SIZE(new_chunk, ((void*)SMALL_CHUNK_ADJACENT(chunk)) - CHUNK_USER_MEM(new_chunk));
+    SET_CHUNK_SIZE(chunk, n_bytes);
     
-    ASSERT(chunk->size     >= 8, "chunk too small");
-    ASSERT(new_chunk->size >= 8, "new_chunk too small");
+    ASSERT(CHUNK_SIZE(chunk)     >= 8, "chunk too small");
+    ASSERT(CHUNK_SIZE(new_chunk) >= 8, "new_chunk too small");
 
     block_add_chunk_to_free_list(block, new_chunk);
 }
 
-internal chunk_header_t * heap_get_chunk_from_block_if_free(heap_t *heap, block_header_t *block, u64 n_bytes) {
+internal chunk_header_t * heap_get_chunk_from_block_if_free(heap_t *heap,
+                                                            block_header_t *block,
+                                                            u64 n_bytes) {
     chunk_header_t *chunk;
+
+    ASSERT(IS_ALIGNED(n_bytes, 8), "n_bytes not aligned");
 
     /* Scan until we find a chunk big enough. */
     chunk = block->free_list_tail;
 
     while (chunk != NULL) {
-        if (chunk->size >= n_bytes) {
+        if (CHUNK_SIZE(chunk) >= n_bytes) {
             break;
         }
         chunk = CHUNK_PREV(chunk);
@@ -225,22 +231,26 @@ internal chunk_header_t * heap_get_chunk_from_block_if_free(heap_t *heap, block_
     if (chunk == NULL)    { return NULL; }
 
     /* Can we split this into two chunks? */
-    if ((chunk->size - n_bytes) > (sizeof(chunk_header_t) + 8)) {
+    if ((CHUNK_SIZE(chunk) - n_bytes) >= (sizeof(chunk_header_t) + 8)) {
         block_split_chunk(block, chunk, n_bytes);
     }
 
-    ASSERT(chunk->size >= n_bytes, "split chunk is no longer big enough");
+    ASSERT(CHUNK_SIZE(chunk) >= n_bytes, "split chunk is no longer big enough");
 
-    block_remove_chunk_from_free_list(block, chunk);
+    block_remove_chunk_from_free_list(heap, block, chunk);
     
     return chunk;
 }
 
-internal chunk_header_t * heap_try_specific_quick_list(heap_t *heap, u64 n_bytes, chunk_header_t **ql, chunk_header_t **ql_p) {
+#ifdef HMALLOC_USE_QUICKLIST
+internal chunk_header_t * heap_try_specific_quick_list(heap_t *heap,
+                                                       u64 n_bytes,
+                                                       chunk_header_t **ql,
+                                                       chunk_header_t **ql_p) {
     chunk_header_t **ql_it;
 
     for (ql_it = ql_p - 1; ql_it >= ql; ql_it -= 1) {
-        if ((*ql_it)->size >= n_bytes) {
+        if (CHUNK_SIZE((*ql_it)) >= n_bytes) {
             (*ql_it)->flags &= ~CHUNK_IS_FREE;
             return *ql_it;
         }
@@ -264,6 +274,7 @@ internal chunk_header_t * heap_try_quick_list(heap_t *heap, u64 n_bytes) {
                 heap->quick_list_not_tiny,
                 heap->quick_list_not_tiny_p);
 }
+#endif
 
 internal void * heap_alloc(heap_t *heap, u64 n_bytes) {
     block_header_t *block;
@@ -292,10 +303,12 @@ internal void * heap_alloc(heap_t *heap, u64 n_bytes) {
      *
      */ ASSERT(n_bytes < MAX_SMALL_CHUNK, "see above @incomplete");
 
+#ifdef HMALLOC_USE_QUICKLIST
     /*
      * First, see if we can find a chunk from a quick list.
      */
     chunk = heap_try_quick_list(heap, n_bytes);
+#endif
 
     if (chunk == NULL) {
         /* 
@@ -327,8 +340,13 @@ internal void * heap_alloc(heap_t *heap, u64 n_bytes) {
     }
 
     ASSERT(chunk != NULL, "invalid chunk -- could not allocate memory");
+    ASSERT(chunk->offset_block_pages > 0, "invalid offset block");
+    ASSERT(CHUNK_PARENT_BLOCK(chunk) == block, "chunk/block mismatch");
+    ASSERT(chunk->tid == heap->tid, "incorrect tid");
 
     mem = CHUNK_USER_MEM(chunk);
+
+    ASSERT(IS_ALIGNED(mem, 8), "user memory is not properly aligned for performance");
 
     return mem;
 }
@@ -348,17 +366,18 @@ internal chunk_header_t * coalesce_free_chunk_back(block_header_t *block, chunk_
 
         ASSERT(prev_free_chunk->flags & CHUNK_IS_FREE, "can't coalesce a chunk that isn't free");
 
-        prev_free_chunk->size += sizeof(chunk_header_t) + chunk->size;
+        SET_CHUNK_SIZE(prev_free_chunk,
+            CHUNK_SIZE(prev_free_chunk) + sizeof(chunk_header_t) + CHUNK_SIZE(chunk));
 
         if (next_free_chunk != NULL) {
             ASSERT(next_free_chunk->flags & CHUNK_IS_FREE, "next chunk in free list isn't free");
             ASSERT(next_free_chunk > prev_free_chunk, "bad distance");
             distance = CHUNK_DISTANCE(next_free_chunk, prev_free_chunk);
-            prev_free_chunk->offset_next = distance;
-            next_free_chunk->offset_prev = distance;
+            SET_CHUNK_OFFSET_NEXT(prev_free_chunk, distance);
+            SET_CHUNK_OFFSET_PREV(next_free_chunk, distance);
         } else {
             ASSERT(chunk == block->free_list_tail, "chunk has no next, but isn't tail");
-            prev_free_chunk->offset_next = 0;
+            SET_CHUNK_OFFSET_NEXT(prev_free_chunk, 0);
             block->free_list_tail = prev_free_chunk;
         }
 
@@ -388,13 +407,10 @@ internal void heap_free_from_block(heap_t *heap, block_header_t *block, chunk_he
     chunk_header_t *block_first_chunk;
 
     ASSERT(!(chunk->flags & CHUNK_IS_FREE), "double free error");
-    ASSERT(chunk->offset_block > 0, "bad block offset");
 
-    block = CHUNK_PARENT_BLOCK(chunk);
-    
     block_add_chunk_to_free_list(block, chunk);
 
-    coalesce_free_chunk(block, chunk);
+    /* coalesce_free_chunk(block, chunk); */
   
     /* If this block isn't the only block in the heap... */
     if (block != heap->blocks_head || block != heap->blocks_tail) {
@@ -402,14 +418,19 @@ internal void heap_free_from_block(heap_t *heap, block_header_t *block, chunk_he
         if (block->free_list_head == block->free_list_tail) {
             block_first_chunk = BLOCK_FIRST_CHUNK(block);
             /* and if that chunk spans the whole block -- release it. */
-            if ((((void*)block_first_chunk) + sizeof(chunk_header_t) + block_first_chunk->size) == block->end) {
+            if ((((void*)block_first_chunk) + sizeof(chunk_header_t) +  CHUNK_SIZE(block_first_chunk)) == block->end) {
                 heap_release_block(heap, block);
             }
         }
     }
 }
 
-internal void heap_add_to_specific_quick_list(heap_t *heap, chunk_header_t *chunk, chunk_header_t **ql, chunk_header_t **ql_p, u64 quick_list_size) {
+#ifdef HMALLOC_USE_QUICKLIST
+internal void heap_add_to_specific_quick_list(heap_t *heap,
+                                              chunk_header_t *chunk,
+                                              chunk_header_t **ql,
+                                              chunk_header_t **ql_p,
+                                              u64 quick_list_size) {
     block_header_t *block;
     u64             n_to_free;
     int             i;
@@ -431,7 +452,9 @@ internal void heap_add_to_specific_quick_list(heap_t *heap, chunk_header_t *chun
             }
         }
 
-        memmove(ql, ql + n_to_free, ql_p - ql - n_to_free * sizeof(chunk_header_t*));
+        memmove(ql,
+                ql + n_to_free,
+                ql_p - ql - n_to_free * sizeof(chunk_header_t*));
         
         ql_p -= n_to_free;
     }
@@ -440,7 +463,7 @@ internal void heap_add_to_specific_quick_list(heap_t *heap, chunk_header_t *chun
 }
 
 internal void heap_add_to_quick_list(heap_t *heap, chunk_header_t *chunk) {
-    if (chunk->size <= HEAP_QL_TINY_CHUNK_SIZE) {
+    if (CHUNK_SIZE(chunk) <= HEAP_QL_TINY_CHUNK_SIZE) {
         return heap_add_to_specific_quick_list(
                     heap,
                     chunk,
@@ -456,13 +479,20 @@ internal void heap_add_to_quick_list(heap_t *heap, chunk_header_t *chunk) {
                 heap->quick_list_not_tiny_p,
                 HEAP_QL_NOT_TINY_ARRAY_SIZE);
 }
+#endif
 
 internal void heap_free(heap_t *heap, chunk_header_t *chunk) {
+    block_header_t *block;
+
+    (void)block;
     ASSERT(!(chunk->flags & CHUNK_IS_FREE), "double free error");
 
-    chunk->flags |= CHUNK_IS_FREE;
-    
+#ifdef HMALLOC_USE_QUICKLIST
     heap_add_to_quick_list(heap, chunk);
+#else
+    block = CHUNK_PARENT_BLOCK(chunk);
+    heap_free_from_block(heap, block, chunk);
+#endif
 }
 
 internal void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignment) {
@@ -475,10 +505,23 @@ internal void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignmen
     u64             new_block_size_request,
                     first_chunk_size;
 
+    /*
+     * @incomplete
+     *
+     * We need to handle the case were n_bytes won't fit in the 32-bit
+     * size field of the chunk_header_t.
+     * We'll just have a separate list of "BIG" chunkations for each 
+     * thread and handle them as a special case.
+     *
+     */ ASSERT(n_bytes < MAX_SMALL_CHUNK, "see above @incomplete");
     ASSERT(alignment > 0, "invalid alignment -- must be > 0");
     ASSERT(IS_POWER_OF_TWO(alignment), "invalid alignment -- must be a power of two");
 
     if (n_bytes == 0)    { return NULL; }
+
+    if (alignment <= 8) {
+        return heap_alloc(heap, n_bytes);
+    }
 
     new_block_size_request =   n_bytes                 /* The bytes we need to give the user. */
                              + alignment               /* Make sure there's space to align. */

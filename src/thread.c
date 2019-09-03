@@ -23,21 +23,86 @@ internal void thread_init(thread_data_t *thr, hm_tid_t tid) {
     LOG("initialized a new thread with tid %hu\n", tid);
 }
 
+internal thread_data_t * acquire_locally(void) {
+    THR_LOCK(local_thr);
+    return local_thr;
+}
+
 internal thread_data_t * acquire_this_thread(void) {
-    pid_t    os_tid;
-    hm_tid_t tid;
+
+    /* /1* Ensure our system is initialized. *1/ */
+    /* hmalloc_init(); */
+
+    /* thread_data_t *thr = thread_datas + 0; */
+    /* THR_LOCK(thr); */
+   
+    /* (void)thread_datas_mtx; */
+
+    /* if (!thr->is_valid) { */
+    /*     thread_init(thr, 0); */
+    /* } */
+
+    /* return thr; */
+
+    #if 1
+
+    pid_t          os_tid;
+    hm_tid_t       tid;
+    thread_data_t *thr;
+    int            count;
+
+    if (local_thr != NULL) {
+        return acquire_locally();
+    }
+
+    /*
+     * A thread_data_t for this thread hasn't been
+     * assigned for this thread yet.
+     */
 
     /* Ensure our system is initialized. */
     hmalloc_init();
 
+    /*
+     * Starting point in the thread_datas array.
+     */
     os_tid = os_get_tid();
     tid    = os_tid & (HMALLOC_MAX_THREADS - 1);
 
-    return acquire_thread(tid);
+    THR_DATA_LOCK(); {
+        /*
+         * Walk through the thread_data slots until we find one that
+         * is vacant.
+         */
+        for (count = 0; count < HMALLOC_MAX_THREADS; count += 1) {
+            thr = thread_datas + tid;
+
+            if (!thr->is_valid) {
+                /*
+                 * Found one. Initialize it.
+                 */
+                thread_init(thr, tid);
+                local_thr = thr;
+                break;
+            }
+
+            tid = (tid + 1) & (HMALLOC_MAX_THREADS - 1);
+        }
+
+        ASSERT(count < HMALLOC_MAX_THREADS, "exceeded HMALLOC_MAX_THREADS");
+    } THR_DATA_UNLOCK();
+
+    THR_LOCK(local_thr);
+
+    return local_thr;
+#endif
 }
 
 internal thread_data_t * acquire_thread(hm_tid_t tid) {
     thread_data_t *thr;
+
+    /* @temp */
+    /* tid = 0; */
 
     /* Ensure our system is initialized. */
     hmalloc_init();
@@ -46,9 +111,7 @@ internal thread_data_t * acquire_thread(hm_tid_t tid) {
 
     THR_LOCK(thr);
 
-    if (!thr->is_valid) {
-        thread_init(thr, tid);
-    }
+    ASSERT(thr->is_valid, "invalid thread_data");
 
     return thr;
 }

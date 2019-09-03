@@ -12,67 +12,21 @@
 /* #define              (0x0004ULL) */
 /* #define              (0x0008ULL) */
 
-typedef struct {
-    /*
-     * For small allocations (<= MAX_SMALL_ALLOC), size is the
-     * number of bytes in the user's memory.
-     * This is also the offset from the end of the header to the next header.
-     * For big allocations, big_n_pages represents the number of pages that 
-     * make up the allocation.
-     */
-    union {
-        u32 size;
-        u32 big_n_pages;
+typedef union {
+    struct { /* When chunk is in free list: */
+        u64 offset_prev_words  : 18;
+        u64 offset_next_words  : 18;
+        u64 flags              : 2;
+        u64 size               : 26;
     };
-
-    /*
-     * Chunk metadata.
-     */
-    union {
-        struct {
-            u16 flags;
-            u16 tid;
-        };
-        u32 __meta;
+    struct { /* When chunk is being used: */
+        u64 offset_block_pages : 18;
+        u64 tid                : 18;
+        u64 __flags            : 2;
+        u64 __size             : 26;
     };
-
-    /*
-     * Offsets to the previous and next chunks in the free list for this
-     * block.
-     * 0 if at end.
-     * If the chunk is NOT in the free list, offset_block is the distance 
-     * from the start of the block.
-     */
-    union {
-        struct {
-            u32 offset_prev;
-            u32 offset_next;
-        };
-        u64 offset_block;
-    };
+    u64 __header;
 } chunk_header_t;
-
-#define MAX_SMALL_CHUNK (((u64)UINT32_MAX) - sizeof(chunk_header_t))
-#define MAX_BIG_CHUNK   ((((u64)UINT32_MAX) * system_info.page_size) - sizeof(chunk_header_t))
-
-#define SMALL_CHUNK_ADJACENT(addr) ((chunk_header_t*)(((void*)addr) + sizeof(chunk_header_t) + ((chunk_header_t*)addr)->size))
-
-#define CHUNK_PREV(addr)  (((chunk_header_t*)addr)->offset_prev == 0 \
-                             ? NULL                                  \
-                             : ((void*)addr) - (((chunk_header_t*)addr)->offset_prev))
-    
-#define CHUNK_NEXT(addr)  (((chunk_header_t*)addr)->offset_next == 0 \
-                             ? NULL                                  \
-                             : ((void*)addr) + (((chunk_header_t*)addr)->offset_next))
-        
-#define CHUNK_USER_MEM(addr) (((void*)addr) + sizeof(chunk_header_t))
-
-#define CHUNK_FROM_USER_MEM(addr) ((chunk_header_t*)(((void*)addr) - sizeof(chunk_header_t)))
-
-#define CHUNK_DISTANCE(a, b) (((void*)(a)) - (((void*)b)))
-
-#define CHUNK_PARENT_BLOCK(addr) ((block_header_t*)(((void*)(addr)) - ((chunk_header_t*)addr)->offset_block))
-
 
 typedef struct block_header {
     chunk_header_t      *free_list_head,
@@ -81,7 +35,65 @@ typedef struct block_header {
     struct block_header *next; 
 } block_header_t;
 
-#define BLOCK_FIRST_CHUNK(addr) (((void*)addr) + sizeof(block_header_t))
+#define MAX_SMALL_CHUNK  (DEFAULT_BLOCK_SIZE - sizeof(block_header_t) - sizeof(chunk_header_t))
+#define MAX_BIG_CHUNK    (((1 << 26) * system_info.page_size) - sizeof(chunk_header_t))
+
+#define CHUNK_SIZE(addr) (((chunk_header_t*)((void*)(addr)))->__size << 3ULL)
+
+#define SET_CHUNK_SIZE(addr, size) do {                            \
+    ASSERT(IS_ALIGNED(size, 8), "chunk size not aligned");         \
+    ((chunk_header_t*)((void*)(addr)))->__size = ((size) >> 3ULL); \
+} while (0)
+
+#define SMALL_CHUNK_ADJACENT(addr) \
+    ((chunk_header_t*)(((void*)addr) + sizeof(chunk_header_t) + CHUNK_SIZE(addr)))
+
+#define SET_CHUNK_OFFSET_PREV(addr, off) do {                 \
+    ASSERT(IS_ALIGNED((off), 8), "offset prev not aligned");  \
+    ((chunk_header_t*)((void*)(addr)))->offset_prev_words     \
+        = ((off) >> 3ULL);                                    \
+} while (0)
+
+#define SET_CHUNK_OFFSET_NEXT(addr, off) do {                 \
+    ASSERT(IS_ALIGNED((off), 8), "offset next not aligned");  \
+    ((chunk_header_t*)((void*)(addr)))->offset_next_words     \
+        = ((off) >> 3ULL);                                    \
+} while (0)
+
+#define SET_CHUNK_OFFSET_BLOCK(addr, block) do {               \
+    ASSERT(IS_ALIGNED((block), system_info.page_size),         \
+        "block not aligned");                                  \
+    ((chunk_header_t*)((void*)(addr)))->offset_block_pages     \
+        =   ((((void*)ALIGN((addr), system_info.page_size))    \
+          - ((void*)(block)))                                  \
+          >> system_info.log_2_page_size);                     \
+} while (0)
+
+#define CHUNK_PREV(addr)  ((chunk_header_t*)(((chunk_header_t*)(addr))->offset_prev_words == 0 \
+                             ? NULL                                                            \
+                             :   ((void*)(addr))                                               \
+                               - (((chunk_header_t*)(addr))->offset_prev_words << 3ULL)))
+ 
+#define CHUNK_NEXT(addr)  ((chunk_header_t*)(((chunk_header_t*)(addr))->offset_next_words == 0 \
+                             ? NULL                                                            \
+                             :   ((void*)(addr))                                               \
+                               + (((chunk_header_t*)(addr))->offset_next_words << 3ULL)))
+
+#define CHUNK_USER_MEM(addr) (((void*)(addr)) + sizeof(chunk_header_t))
+
+#define CHUNK_FROM_USER_MEM(addr) ((chunk_header_t*)(((void*)(addr)) - sizeof(chunk_header_t)))
+
+#define CHUNK_DISTANCE(a, b) (((void*)(a)) - (((void*)(b))))
+
+#define CHUNK_PARENT_BLOCK(addr)                           \
+    ((block_header_t*)(                                    \
+          ALIGN(((void*)(addr)), system_info.page_size)    \
+        - ((((chunk_header_t*)(addr))->offset_block_pages) \
+            << system_info.log_2_page_size)))
+
+
+
+#define BLOCK_FIRST_CHUNK(addr) (((void*)(addr)) + sizeof(block_header_t))
 
 #define LARGEST_CHUNK_IN_EMPTY_N_PAGE_BLOCK(N) \
     (((system_info.page_size) * (N)) - sizeof(block_header_t) - sizeof(chunk_header_t))
@@ -89,19 +101,20 @@ typedef struct block_header {
 
 
 #define HEAP_QL_TINY_CHUNK_SIZE     (KiB(2))
-#define HEAP_QL_TINY_ARRAY_SIZE     (1024)
-#define HEAP_QL_NOT_TINY_ARRAY_SIZE (64)
+#define HEAP_QL_TINY_ARRAY_SIZE     (512)
+#define HEAP_QL_NOT_TINY_ARRAY_SIZE (128)
 
 typedef struct {
     u16               tid;
     block_header_t   *blocks_head,
                      *blocks_tail;
+#ifdef HMALLOC_USE_QUICKLIST
     chunk_header_t   *quick_list_tiny[HEAP_QL_TINY_ARRAY_SIZE],
                     **quick_list_tiny_p,
                      *quick_list_not_tiny[HEAP_QL_NOT_TINY_ARRAY_SIZE],
                     **quick_list_not_tiny_p;
+#endif
 } heap_t;
-
 
 internal void heap_make(heap_t *heap);
 internal void * heap_alloc(heap_t *heap, u64 n_bytes);

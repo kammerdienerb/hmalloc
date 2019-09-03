@@ -39,22 +39,27 @@ external void * hmalloc_calloc(size_t count, size_t n_bytes) {
 
 external void * hmalloc_realloc(void *addr, size_t n_bytes) {
     void *new_addr;
-    u64   old_size,
-          copy_size;
 
-    n_bytes += (n_bytes == 0);
+    new_addr = NULL;
 
-    new_addr = hmalloc_malloc(n_bytes);
+    if (addr == NULL) {
+        new_addr = hmalloc_malloc(n_bytes);
+    } else {
+        if (n_bytes > 0) {
+            /*
+             * This is done for us in heap_alloc, but we'll
+             * need the aligned value when we get the copy length.
+             */
+            n_bytes  = ALIGN(n_bytes, 8);
+            new_addr = hmalloc_malloc(n_bytes);
 
-    if (addr != NULL) {
-        old_size  = hmalloc_malloc_size(addr);
-        copy_size = old_size;
-        if (n_bytes < copy_size) {
-            copy_size = n_bytes;
+            memcpy(new_addr, addr,
+                   MIN(hmalloc_malloc_size(addr), n_bytes));
         }
-        memcpy(new_addr, addr, copy_size);
+
         hmalloc_free(addr);
     }
+
     return new_addr;
 }
 external void * hmalloc_reallocf(void *addr, size_t n_bytes) { return hmalloc_realloc(addr, n_bytes); }
@@ -102,11 +107,15 @@ external int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_by
 }
 
 external size_t hmalloc_malloc_size(void *addr) {
+    if (addr == NULL) {
+        return 0;
+    }
+
     /* 
      * @incomplete
      * What about big allocs???
      */
-    return CHUNK_FROM_USER_MEM(addr)->size;
+    return CHUNK_SIZE(CHUNK_FROM_USER_MEM(addr));
 }
 
 external void * malloc(size_t n_bytes)               { return hmalloc_malloc(n_bytes);         }

@@ -7,6 +7,17 @@
 #include <pthread.h>
 
 
+/*
+ * @TODO
+ *
+ * HMALLOC_MAX_THREADS should be something that's configured
+ * at run time -- either through an environment variable, 
+ * or computed on initialization by checking the number of 
+ * threads on the system.
+ *                                                -- Brandon
+ */
+
+
 #ifndef HMALLOC_MAX_THREADS
 #define HMALLOC_MAX_THREADS (512ULL)
 #endif
@@ -30,7 +41,10 @@ typedef struct {
     int             is_valid;
 } thread_data_t;
 
-internal thread_data_t thread_datas[HMALLOC_MAX_THREADS];
+internal thread_data_t   thread_datas[HMALLOC_MAX_THREADS];
+internal pthread_mutex_t thread_datas_mtx = PTHREAD_MUTEX_INITIALIZER;
+
+internal __thread thread_data_t *local_thr;
 
 internal void threads_init(void);
 internal void thread_init(thread_data_t *thr, hm_tid_t tid);
@@ -40,5 +54,8 @@ internal void release_thread(thread_data_t *thr);
 
 #define THR_LOCK(thr_ptr)   HMALLOC_MTX_LOCKER(&thr_ptr->mtx)
 #define THR_UNLOCK(thr_ptr) HMALLOC_MTX_UNLOCKER(&thr_ptr->mtx)
+
+#define THR_DATA_LOCK(thr_ptr)   HMALLOC_MTX_LOCKER(&thread_datas_mtx)
+#define THR_DATA_UNLOCK(thr_ptr) HMALLOC_MTX_UNLOCKER(&thread_datas_mtx)
 
 #endif
