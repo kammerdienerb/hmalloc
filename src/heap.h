@@ -5,7 +5,6 @@
 
 #include <pthread.h>
 
-
 /* Chunk header flags */
 #define CHUNK_IS_FREE (UINT16_C(0x0001))
 #define CHUNK_IS_BIG  (UINT16_C(0x0002))
@@ -16,13 +15,8 @@ typedef union {
     struct { /* When chunk is in free list: */
         u64 offset_prev_words  : 18;
         u64 offset_next_words  : 18;
-        u64 flags              : 2;
         u64 size               : 26;
-    };
-    struct { /* When chunk is being used: */
-        u64 __unused           : 36;
-        u64 __flags            : 2;
-        u64 __size             : 26;
+        u64 flags              : 2;
     };
     u64 __header;
 } chunk_header_t;
@@ -65,7 +59,7 @@ typedef struct {
       ((void*)(sblock)) + ((N) * (64ULL * SBLOCK_SLOT_SIZE))))
 
 #define REGION_GET_SLOT(r, N)                                 \
-    (((N) > 0)                                                \
+    (likely(((N) > 0))                                        \
         ? ((void*)(region)) + ((N) * SBLOCK_SLOT_SIZE)        \
         : ((void*)(region)) + sizeof(sblock_region_header_t))
 
@@ -83,11 +77,11 @@ typedef struct {
     ((block_header_t*)(void*)(((u64)(void*)(addr)) & ~(DEFAULT_BLOCK_SIZE - 1)))
 
 
-#define CHUNK_SIZE(addr) (((chunk_header_t*)((void*)(addr)))->__size << 3ULL)
+#define CHUNK_SIZE(addr) (((chunk_header_t*)((void*)(addr)))->size << 3ULL)
 
-#define SET_CHUNK_SIZE(addr, size) do {                            \
-    ASSERT(IS_ALIGNED(size, 8), "chunk size not aligned");         \
-    ((chunk_header_t*)((void*)(addr)))->__size = ((size) >> 3ULL); \
+#define SET_CHUNK_SIZE(addr, sz) do {                          \
+    ASSERT(IS_ALIGNED(sz, 8), "chunk size not aligned");       \
+    ((chunk_header_t*)((void*)(addr)))->size = ((sz) >> 3ULL); \
 } while (0)
 
 #define SMALL_CHUNK_ADJACENT(addr) \
@@ -105,14 +99,14 @@ typedef struct {
         = ((off) >> 3ULL);                                    \
 } while (0)
 
-#define CHUNK_PREV(addr)  ((chunk_header_t*)(((chunk_header_t*)(addr))->offset_prev_words == 0 \
-                             ? NULL                                                            \
-                             :   ((void*)(addr))                                               \
-                               - (((chunk_header_t*)(addr))->offset_prev_words << 3ULL)))
+#define CHUNK_PREV(addr)  ((chunk_header_t*)(unlikely(((chunk_header_t*)(addr))->offset_prev_words == 0)) \
+                             ? NULL                                                                       \
+                             :   ((void*)(addr))                                                          \
+                               - (((chunk_header_t*)(addr))->offset_prev_words << 3ULL))
  
-#define CHUNK_NEXT(addr)  ((chunk_header_t*)(((chunk_header_t*)(addr))->offset_next_words == 0 \
-                             ? NULL                                                            \
-                             :   ((void*)(addr))                                               \
+#define CHUNK_NEXT(addr)  ((chunk_header_t*)(unlikely(((chunk_header_t*)(addr))->offset_next_words == 0) \
+                             ? NULL                                                                      \
+                             :   ((void*)(addr))                                                         \
                                + (((chunk_header_t*)(addr))->offset_next_words << 3ULL)))
 
 #define CHUNK_USER_MEM(addr) (((void*)(addr)) + sizeof(chunk_header_t))

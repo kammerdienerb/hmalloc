@@ -60,7 +60,7 @@ internal void * get_pages_from_os(u32 n_pages, u64 alignment) {
                 -1,
                 (off_t)0);
 
-    if (mem_start == MAP_FAILED || mem_start == NULL) {
+    if (unlikely(mem_start == MAP_FAILED || mem_start == NULL)) {
         LOG("ERROR -- could not get %u pages (%llu bytes) from OS\n", n_pages, desired_size);
         return NULL;
     }
