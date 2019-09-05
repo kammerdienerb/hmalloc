@@ -9,6 +9,10 @@ internal void perform_sanity_checks(void) {
     (void)c;
 
     ASSERT(sizeof(c) == 8, "chunk_header_t is invalid");
+
+#ifdef HMALLOC_USE_SBLOCKS
+    ASSERT(IS_POWER_OF_TWO(SBLOCK_SLOT_SIZE), "slot size is not power of two");
+#endif
 }
 
 internal void hmalloc_init(void) {

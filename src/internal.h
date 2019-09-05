@@ -10,11 +10,10 @@
 
 
 
+#define HMALLOC_ANSI_C
 /* #define HMALLOC_DO_LOGGING */
 /* #define HMALLOC_DO_ASSERTIONS */
-#define HMALLOC_ANSI_C
-
-#define HMALLOC_USE_QUICKLIST
+#define HMALLOC_USE_SBLOCKS
 
 #ifdef HMALLOC_ANSI_C
 #define inline

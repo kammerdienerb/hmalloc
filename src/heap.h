@@ -20,23 +20,68 @@ typedef union {
         u64 size               : 26;
     };
     struct { /* When chunk is being used: */
-        u64 offset_block_pages : 18;
-        u64 tid                : 18;
+        u64 __unused           : 36;
         u64 __flags            : 2;
         u64 __size             : 26;
     };
     u64 __header;
 } chunk_header_t;
 
-typedef struct block_header {
-    chunk_header_t      *free_list_head,
-                        *free_list_tail;
-    void                *end;
-    struct block_header *next; 
+#define MAX_SMALL_CHUNK  (DEFAULT_BLOCK_SIZE - sizeof(block_header_t) - sizeof(chunk_header_t))
+#define MAX_BIG_CHUNK    ((((1ULL << 26ULL) - 1ULL) << system_info.log_2_page_size) - sizeof(chunk_header_t))
+
+typedef struct cblock_header {
+    chunk_header_t       *free_list_head,
+                         *free_list_tail;
+    struct cblock_header *prev;
+    void                 *end;
+} cblock_header_t;
+
+#define BLOCK_KIND_CBLOCK (0x1)
+#define BLOCK_KIND_SBLOCK (0x2)
+
+typedef struct sblock_header {
+    u64                   bitfield_available_regions;
+    struct sblock_header *prev;
+    void                 *end;
+    u32                   n_empty_regions;
+} sblock_header_t;
+
+typedef struct {
+    u64 bitfield_taken_slots;
+} sblock_region_header_t;
+
+#define ALL_REGIONS_AVAILABLE (0x7FFFFFFFFFFFFFFFULL)
+#define ALL_REGIONS_FULL      (0ULL)
+#define ALL_SLOTS_AVAILABLE   (0ULL)
+#define ALL_SLOTS_TAKEN       (0xFFFFFFFFFFFFFFFFULL)
+
+#define SBLOCK_SLOT_SIZE      (512ULL)
+#define SBLOCK_MAX_ALLOC_SIZE (SBLOCK_SLOT_SIZE - sizeof(sblock_region_header_t))
+#define SBLOCK_REGION_SIZE    (64ULL * SBLOCK_SLOT_SIZE)
+
+#define SBLOCK_GET_REGION(sblock, N)                           \
+    ((sblock_region_header_t*)(                                \
+      ((void*)(sblock)) + ((N) * (64ULL * SBLOCK_SLOT_SIZE))))
+
+#define REGION_GET_SLOT(r, N)                                 \
+    (((N) > 0)                                                \
+        ? ((void*)(region)) + ((N) * SBLOCK_SLOT_SIZE)        \
+        : ((void*)(region)) + sizeof(sblock_region_header_t))
+
+typedef struct {
+    union {
+        cblock_header_t c;
+        sblock_header_t s;
+    };
+    u8  block_kind;
+    u16 tid;
 } block_header_t;
 
-#define MAX_SMALL_CHUNK  (DEFAULT_BLOCK_SIZE - sizeof(block_header_t) - sizeof(chunk_header_t))
-#define MAX_BIG_CHUNK    (((1 << 26) * system_info.page_size) - sizeof(chunk_header_t))
+
+#define ADDR_PARENT_BLOCK(addr) \
+    ((block_header_t*)(void*)(((u64)(void*)(addr)) & ~(DEFAULT_BLOCK_SIZE - 1)))
+
 
 #define CHUNK_SIZE(addr) (((chunk_header_t*)((void*)(addr)))->__size << 3ULL)
 
@@ -60,15 +105,6 @@ typedef struct block_header {
         = ((off) >> 3ULL);                                    \
 } while (0)
 
-#define SET_CHUNK_OFFSET_BLOCK(addr, block) do {               \
-    ASSERT(IS_ALIGNED((block), system_info.page_size),         \
-        "block not aligned");                                  \
-    ((chunk_header_t*)((void*)(addr)))->offset_block_pages     \
-        =   ((((void*)ALIGN((addr), system_info.page_size))    \
-          - ((void*)(block)))                                  \
-          >> system_info.log_2_page_size);                     \
-} while (0)
-
 #define CHUNK_PREV(addr)  ((chunk_header_t*)(((chunk_header_t*)(addr))->offset_prev_words == 0 \
                              ? NULL                                                            \
                              :   ((void*)(addr))                                               \
@@ -85,34 +121,29 @@ typedef struct block_header {
 
 #define CHUNK_DISTANCE(a, b) (((void*)(a)) - (((void*)(b))))
 
-#define CHUNK_PARENT_BLOCK(addr)                           \
-    ((block_header_t*)(                                    \
-          ALIGN(((void*)(addr)), system_info.page_size)    \
-        - ((((chunk_header_t*)(addr))->offset_block_pages) \
-            << system_info.log_2_page_size)))
+#define CHUNK_PARENT_BLOCK(addr) \
+    ADDR_PARENT_BLOCK(addr)
 
 
-
-#define BLOCK_FIRST_CHUNK(addr) (((void*)(addr)) + sizeof(block_header_t))
+#define CBLOCK_FIRST_CHUNK(addr) (((void*)(addr)) + sizeof(block_header_t))
 
 #define LARGEST_CHUNK_IN_EMPTY_N_PAGE_BLOCK(N) \
-    (((system_info.page_size) * (N)) - sizeof(block_header_t) - sizeof(chunk_header_t))
+    (((N) << system_info.log_2_page_size) - sizeof(block_header_t) - sizeof(chunk_header_t))
 
 
 
 #define HEAP_QL_TINY_CHUNK_SIZE     (KiB(2))
-#define HEAP_QL_TINY_ARRAY_SIZE     (512)
-#define HEAP_QL_NOT_TINY_ARRAY_SIZE (128)
+#define HEAP_QL_TINY_ARRAY_SIZE     (32)
+#define HEAP_QL_NOT_TINY_ARRAY_SIZE (32)
 
 typedef struct {
     u16               tid;
-    block_header_t   *blocks_head,
-                     *blocks_tail;
-#ifdef HMALLOC_USE_QUICKLIST
-    chunk_header_t   *quick_list_tiny[HEAP_QL_TINY_ARRAY_SIZE],
-                    **quick_list_tiny_p,
-                     *quick_list_not_tiny[HEAP_QL_NOT_TINY_ARRAY_SIZE],
-                    **quick_list_not_tiny_p;
+    cblock_header_t  *cblocks_head,
+                     *cblocks_tail,
+                     *big_chunk_cblocks_tail;
+#ifdef HMALLOC_USE_SBLOCKS
+    sblock_header_t  *sblocks_head,
+                     *sblocks_tail;
 #endif
 } heap_t;
 

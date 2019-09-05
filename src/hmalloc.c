@@ -76,17 +76,17 @@ external void * hmalloc_valloc(size_t n_bytes) {
 }
 
 external void hmalloc_free(void *addr) {
-    chunk_header_t *chunk;
     thread_data_t  *thr;
+    block_header_t *block;
 
     if (addr == NULL) {
         return;
     }
     
-    chunk = CHUNK_FROM_USER_MEM(addr);
+    block = ADDR_PARENT_BLOCK(addr);
 
-    thr = acquire_thread(chunk->tid);
-    heap_free(&thr->heap, chunk);
+    thr = acquire_thread(block->tid);
+    heap_free(&thr->heap, addr);
     release_thread(thr);
 }
 
@@ -107,6 +107,8 @@ external int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_by
 }
 
 external size_t hmalloc_malloc_size(void *addr) {
+    block_header_t *block;
+
     if (addr == NULL) {
         return 0;
     }
@@ -115,7 +117,18 @@ external size_t hmalloc_malloc_size(void *addr) {
      * @incomplete
      * What about big allocs???
      */
-    return CHUNK_SIZE(CHUNK_FROM_USER_MEM(addr));
+
+    block = ADDR_PARENT_BLOCK(addr);
+    
+    if (block->block_kind == BLOCK_KIND_CBLOCK) {
+        return CHUNK_SIZE(CHUNK_FROM_USER_MEM(addr));
+    } else if (block->block_kind == BLOCK_KIND_SBLOCK) {
+        return SBLOCK_SLOT_SIZE;
+    }
+
+    ASSERT(0, "couldn't determine size of allocation");
+
+    return 0;
 }
 
 external void * malloc(size_t n_bytes)               { return hmalloc_malloc(n_bytes);         }

@@ -35,22 +35,51 @@ internal void system_info_init(void) {
     LOG("initialized system info\n");
 }
 
-internal void * get_pages_from_os(u32 n_pages) {
-    void *addr;
+internal void * get_pages_from_os(u32 n_pages, u64 alignment) {
+    void *aligned_start,
+         *aligned_end,
+         *mem_start,
+         *mem_end;
+    u64   desired_size,
+          first_map_size;
 
-    addr = mmap(NULL,
-                n_pages * system_info.page_size,
+    desired_size = (n_pages << system_info.log_2_page_size);
+
+    ASSERT(desired_size >= alignment, "alignment greater than desired memory size");
+
+    /*
+     * Ask for twice the desired size so that we can get aligned
+     * memory.
+     */
+    first_map_size = desired_size << 1ULL;
+
+    mem_start = mmap(NULL,
+                first_map_size,
                 PROT_READ   | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS,
                 -1,
                 (off_t)0);
 
-    if (addr == MAP_FAILED || addr == NULL) {
-        LOG("ERROR -- could not get %u pages (%llu bytes) from OS\n", n_pages, n_pages * system_info.page_size);
+    if (mem_start == MAP_FAILED || mem_start == NULL) {
+        LOG("ERROR -- could not get %u pages (%llu bytes) from OS\n", n_pages, desired_size);
         return NULL;
     }
 
-    return addr;
+    aligned_start = ALIGN(mem_start, alignment);
+    aligned_end   = aligned_start + desired_size;
+    mem_end       = mem_start + first_map_size;
+
+    /*
+     * Trim off the edges we don't need.
+     */
+    if (mem_start != aligned_start) {
+        munmap(mem_start, aligned_start - mem_start);
+    }
+    if (mem_end != aligned_end) {
+        munmap(aligned_end, mem_end - aligned_end);
+    }
+
+    return aligned_start;
 }
 
 internal void release_pages_to_os(void *addr, u32 n_pages) {

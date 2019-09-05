@@ -14,7 +14,7 @@ internal system_info_t system_info;
 
 internal void system_info_init(void);
 
-internal void * get_pages_from_os(u32 n_pages);
+internal void * get_pages_from_os(u32 n_pages, u64 alignment);
 internal void   release_pages_to_os(void *addr, u32 n_pages);
 internal pid_t  os_get_tid(void);
 
