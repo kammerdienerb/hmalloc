@@ -95,7 +95,7 @@ void log_init(void);
 #define GiB(x) ((x) * 1024ULL * MiB(1ULL))
 #define TiB(x) ((x) * 1024ULL * GiB(1ULL))
 
-#define DEFAULT_BLOCK_SIZE (MiB(2))
+#define DEFAULT_BLOCK_SIZE (MiB(4))
 
 #define HMALLOC_MTX_LOCKER(mtx_ptr)   do { pthread_mutex_lock(mtx_ptr);   } while (0)
 #define HMALLOC_MTX_UNLOCKER(mtx_ptr) do { pthread_mutex_unlock(mtx_ptr); } while (0)

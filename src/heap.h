@@ -12,17 +12,16 @@
 /* #define              (0x0008ULL) */
 
 typedef union {
-    struct { /* When chunk is in free list: */
-        u64 offset_prev_words  : 18;
-        u64 offset_next_words  : 18;
-        u64 size               : 26;
+    struct {
+        u64 offset_prev_words  : 20;
+        u64 offset_next_words  : 20;
+        u64 size               : 22;
         u64 flags              : 2;
     };
     u64 __header;
 } chunk_header_t;
 
 #define MAX_SMALL_CHUNK  (DEFAULT_BLOCK_SIZE - sizeof(block_header_t) - sizeof(chunk_header_t))
-#define MAX_BIG_CHUNK    ((((1ULL << 26ULL) - 1ULL) << system_info.log_2_page_size) - sizeof(chunk_header_t))
 
 typedef struct cblock_header {
     chunk_header_t       *free_list_head,

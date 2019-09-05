@@ -20,10 +20,10 @@ internal void hmalloc_init(void) {
      * Thread-unsafe check for performance.
      * Could give a false positive.
      */
-    if (!hmalloc_is_initialized) {
+    if (unlikely(!hmalloc_is_initialized)) {
         INIT_LOCK(); {
             /* Thread-safe check. */
-            if (hmalloc_is_initialized) {
+            if (unlikely(hmalloc_is_initialized)) {
                 INIT_UNLOCK();
                 return;
             }

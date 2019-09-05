@@ -29,7 +29,6 @@ internal void system_info_init(void) {
 
     LOG("page_size:          %lu\n", system_info.page_size);
     LOG("MAX_SMALL_CHUNK:    %lu\n", MAX_SMALL_CHUNK);
-    LOG("MAX_BIG_CHUNK:      %lu\n", MAX_BIG_CHUNK);
     LOG("DEFAULT_BLOCK_SIZE: %lu\n", DEFAULT_BLOCK_SIZE);
 
     LOG("initialized system info\n");

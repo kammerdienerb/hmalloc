@@ -45,7 +45,7 @@ external void * hmalloc_realloc(void *addr, size_t n_bytes) {
     if (addr == NULL) {
         new_addr = hmalloc_malloc(n_bytes);
     } else {
-        if (n_bytes > 0) {
+        if (likely(n_bytes > 0)) {
             /*
              * This is done for us in heap_alloc, but we'll
              * need the aligned value when we get the copy length.
@@ -79,7 +79,7 @@ external void hmalloc_free(void *addr) {
     thread_data_t  *thr;
     block_header_t *block;
 
-    if (addr == NULL) {
+    if (unlikely(addr == NULL)) {
         return;
     }
     
@@ -93,8 +93,8 @@ external void hmalloc_free(void *addr) {
 external int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_bytes) {
     thread_data_t *thr;
   
-    if (!IS_POWER_OF_TWO(alignment)
-    ||  alignment < sizeof(void*)) {
+    if (unlikely(!IS_POWER_OF_TWO(alignment)
+    ||  alignment < sizeof(void*))) {
         return EINVAL;
     }
 
@@ -102,14 +102,14 @@ external int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_by
     *memptr = heap_aligned_alloc(&thr->heap, n_bytes, alignment);
     release_thread(thr);
 
-    if (*memptr == NULL)    { return ENOMEM; }
+    if (unlikely(*memptr == NULL))    { return ENOMEM; }
     return 0;
 }
 
 external size_t hmalloc_malloc_size(void *addr) {
     block_header_t *block;
 
-    if (addr == NULL) {
+    if (unlikely(addr == NULL)) {
         return 0;
     }
 
@@ -120,9 +120,9 @@ external size_t hmalloc_malloc_size(void *addr) {
 
     block = ADDR_PARENT_BLOCK(addr);
     
-    if (block->block_kind == BLOCK_KIND_CBLOCK) {
+    if (likely(block->block_kind == BLOCK_KIND_CBLOCK)) {
         return CHUNK_SIZE(CHUNK_FROM_USER_MEM(addr));
-    } else if (block->block_kind == BLOCK_KIND_SBLOCK) {
+    } else if (likely(block->block_kind == BLOCK_KIND_SBLOCK)) {
         return SBLOCK_SLOT_SIZE;
     }
 
