@@ -169,7 +169,7 @@ internal void cblock_add_chunk_to_free_list(cblock_header_t *cblock, chunk_heade
     SET_CHUNK_OFFSET_PREV(chunk, 0);
     SET_CHUNK_OFFSET_NEXT(chunk, 0);
 
-    if (unlikely(cblock->free_list_head == NULL)) {
+    if (cblock->free_list_head == NULL) {
         /* This will be the only chunk on the free list. */
         ASSERT(cblock->free_list_tail == NULL, "tail, but no head");
 
@@ -229,10 +229,10 @@ internal void cblock_remove_chunk_from_free_list(heap_t *heap, cblock_header_t *
                    *next_free_chunk;
     u64             distance;
 
-    if (unlikely(chunk == cblock->free_list_head && chunk == cblock->free_list_tail)) {
+    if (chunk == cblock->free_list_head && chunk == cblock->free_list_tail) {
         cblock->free_list_head = cblock->free_list_tail = NULL;
 
-    } else if (unlikely(chunk == cblock->free_list_head)) {
+    } else if (chunk == cblock->free_list_head) {
         next_free_chunk = CHUNK_NEXT(chunk);
 
         ASSERT(next_free_chunk != NULL, "head is not only free chunk, but has no next");
@@ -240,7 +240,7 @@ internal void cblock_remove_chunk_from_free_list(heap_t *heap, cblock_header_t *
         SET_CHUNK_OFFSET_PREV(next_free_chunk, 0);
         cblock->free_list_head        = next_free_chunk;
 
-    } else if (likely(chunk == cblock->free_list_tail)) {
+    } else if (chunk == cblock->free_list_tail) {
         prev_free_chunk = CHUNK_PREV(chunk);
 
         ASSERT(prev_free_chunk != NULL, "tail is not only free chunk, but has no prev");
@@ -295,7 +295,7 @@ internal chunk_header_t * heap_get_chunk_from_cblock_if_free(heap_t *heap,
     /* Scan until we find a chunk big enough. */
     chunk = cblock->free_list_tail;
 
-    while (likely(chunk != NULL)) {
+    while (chunk != NULL) {
         if (CHUNK_SIZE(chunk) >= n_bytes) {
             break;
         }
@@ -303,7 +303,7 @@ internal chunk_header_t * heap_get_chunk_from_cblock_if_free(heap_t *heap,
     }
 
     /* Nothing viable in this cblock. */
-    if (unlikely(chunk == NULL))    { return NULL; }
+    if (chunk == NULL)    { return NULL; }
 
     /* Can we split this into two chunks? */
     if ((CHUNK_SIZE(chunk) - n_bytes) >= (sizeof(chunk_header_t) + 8)) {
@@ -342,7 +342,7 @@ internal void * sblock_get_slot_if_free(sblock_header_t *sblock) {
     void                   *slot;
     u64                     save_region_bitfield;
 
-    if (unlikely(sblock->bitfield_available_regions == ALL_REGIONS_FULL)) {
+    if (sblock->bitfield_available_regions == ALL_REGIONS_FULL) {
         return NULL;
     }
 
@@ -366,7 +366,7 @@ internal void * sblock_get_slot_if_free(sblock_header_t *sblock) {
         sblock->n_empty_regions -= 1;
     }
 
-    if (unlikely(region->bitfield_taken_slots == ALL_SLOTS_TAKEN)) {
+    if (region->bitfield_taken_slots == ALL_SLOTS_TAKEN) {
         /*
          * Clear the bit to indicate that this region is full.
          */
@@ -386,7 +386,7 @@ internal void * heap_alloc_from_sblocks(heap_t *heap, u64 n_bytes) {
     mem    = NULL;
     sblock = heap->sblocks_tail;
 
-    while (likely(sblock != NULL)) {
+    while (sblock != NULL) {
         mem = sblock_get_slot_if_free(sblock);
 
         if (mem != NULL)    { break; }
@@ -394,7 +394,7 @@ internal void * heap_alloc_from_sblocks(heap_t *heap, u64 n_bytes) {
         sblock = sblock->prev;
     }
 
-    if (unlikely(mem == NULL)) {
+    if (mem == NULL) {
         sblock = heap_new_sblock(heap);
         heap_add_sblock(heap, sblock);
         mem = sblock_get_slot_if_free(sblock);
@@ -495,24 +495,12 @@ internal void * heap_alloc(heap_t *heap, u64 n_bytes) {
      */
     n_bytes = ALIGN(n_bytes, 8);
 
-#if 0
-    /*
-     * @incomplete
-     *
-     * We need to handle the case were n_bytes won't fit in the 32-bit
-     * size field of the chunk_header_t.
-     * We'll just have a separate list of "BIG" chunkations for each 
-     * thread and handle them as a special case.
-     *
-     */ ASSERT(n_bytes < MAX_SMALL_CHUNK, "see above @incomplete");
-#endif
-
     if (unlikely(n_bytes > MAX_SMALL_CHUNK)) {
         return heap_big_alloc(heap, n_bytes); 
     }
 
 #ifdef HMALLOC_USE_SBLOCKS
-    if (likely(n_bytes <= SBLOCK_MAX_ALLOC_SIZE)) {
+    if (n_bytes <= SBLOCK_MAX_ALLOC_SIZE) {
         return heap_alloc_from_sblocks(heap, n_bytes);
     }
     /*
@@ -523,15 +511,15 @@ internal void * heap_alloc(heap_t *heap, u64 n_bytes) {
 
     cblock = heap->cblocks_tail;
 
-    while (likely(cblock != NULL)) {
+    while (cblock != NULL) {
         chunk = heap_get_chunk_from_cblock_if_free(heap, cblock, n_bytes);
 
-        if (likely(chunk != NULL))    { break; }
+        if (chunk != NULL)    { break; }
 
         cblock = cblock->prev;
     }
 
-    if (unlikely(chunk == NULL)) {
+    if (chunk == NULL) {
         /*
          * We've gone through all of the cblocks and haven't found a 
          * big enough chunk.
@@ -613,7 +601,7 @@ internal void heap_free_from_cblock(heap_t *heap, cblock_header_t *cblock, chunk
     coalesce_free_chunk(cblock, chunk);
   
     /* If the cblock only has one free chunk... */
-    if (unlikely(cblock->free_list_head == cblock->free_list_tail)) {
+    if (cblock->free_list_head == cblock->free_list_tail) {
         cblock_first_chunk = CBLOCK_FIRST_CHUNK(cblock);
         /* and if that chunk spans the whole cblock -- release it. */
         if ((((void*)cblock_first_chunk) + sizeof(chunk_header_t) +  CHUNK_SIZE(cblock_first_chunk)) == cblock->end) {
@@ -656,7 +644,7 @@ internal void heap_free_from_sblock(heap_t *heap, sblock_header_t *sblock, void 
      * If this region has just become completely empty, then
      * we should indicate that to the sblock.
      */
-    if (unlikely(region->bitfield_taken_slots == ALL_SLOTS_AVAILABLE)) {
+    if (region->bitfield_taken_slots == ALL_SLOTS_AVAILABLE) {
         sblock->n_empty_regions += 1;
     }
 
@@ -671,7 +659,7 @@ internal void heap_free_from_sblock(heap_t *heap, sblock_header_t *sblock, void 
      * If all regions are empty (i.e., the sblock contains no allocations),
      * then we can consider releasing the sblock.
      */
-    if (unlikely(sblock->n_empty_regions == 63)) {
+    if (sblock->n_empty_regions == 63) {
         /* If this sblock isn't the only sblock in the heap... */
         if (sblock != heap->sblocks_head || sblock != heap->sblocks_tail) {
             heap_remove_sblock(heap, sblock);
@@ -691,7 +679,7 @@ internal void heap_free(heap_t *heap, void *addr) {
     block = ADDR_PARENT_BLOCK(addr);
 
 #ifdef HMALLOC_USE_SBLOCKS
-    if (likely(block->block_kind == BLOCK_KIND_SBLOCK)) {
+    if (block->block_kind == BLOCK_KIND_SBLOCK) {
         heap_free_from_sblock(heap, &(block->s), addr);
     } else
 #endif 
@@ -735,11 +723,7 @@ internal void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignmen
     /*
      * @incomplete
      *
-     * We need to handle the case were n_bytes won't fit in the 32-bit
-     * size field of the chunk_header_t.
-     * We'll just have a separate list of "BIG" chunkations for each 
-     * thread and handle them as a special case.
-     *
+     * How should we handle big chunks in aligned_alloc?
      */ ASSERT(new_cblock_size_request < MAX_SMALL_CHUNK, "see above @incomplete");
 
     cblock = heap_new_cblock(heap, new_cblock_size_request);
@@ -748,7 +732,7 @@ internal void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignmen
 
     first_chunk_check = ((void*)block) + sizeof(block_header_t);
 
-    if (unlikely(IS_ALIGNED(CHUNK_USER_MEM(first_chunk_check), alignment))) {
+    if (IS_ALIGNED(CHUNK_USER_MEM(first_chunk_check), alignment)) {
         aligned_addr = CHUNK_USER_MEM(first_chunk_check);
         
         chunk = heap_get_chunk_from_cblock_if_free(heap, cblock, n_bytes);

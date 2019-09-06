@@ -8,9 +8,9 @@ CFG_REL3=-O3
 # CFG=$(CFG_DEB1)
 # CFG=$(CFG_DEB2)
 # CFG=$(CFG_DEB3)
-# CFG=$(CFG_REL1)
+CFG=$(CFG_REL1)
 # CFG=$(CFG_REL2)
-CFG=$(CFG_REL3)
+# CFG=$(CFG_REL3)
 
 C_FLAGS=-ansi -shared -fPIC -lpthread -lm -Wall -fmax-errors=3 -Werror -Wno-unused-function $(CFG)
 

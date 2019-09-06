@@ -34,7 +34,7 @@ internal void system_info_init(void) {
     LOG("initialized system info\n");
 }
 
-internal void * get_pages_from_os(u32 n_pages, u64 alignment) {
+internal void * get_pages_from_os(u64 n_pages, u64 alignment) {
     void *aligned_start,
          *aligned_end,
          *mem_start,
@@ -81,7 +81,7 @@ internal void * get_pages_from_os(u32 n_pages, u64 alignment) {
     return aligned_start;
 }
 
-internal void release_pages_to_os(void *addr, u32 n_pages) {
+internal void release_pages_to_os(void *addr, u64 n_pages) {
     int err_code;
 
     err_code = munmap(addr, n_pages << system_info.log_2_page_size);

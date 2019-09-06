@@ -39,6 +39,7 @@ external void * hmalloc_calloc(size_t count, size_t n_bytes) {
 
 external void * hmalloc_realloc(void *addr, size_t n_bytes) {
     void *new_addr;
+    u64   old_size;
 
     new_addr = NULL;
 
@@ -46,15 +47,25 @@ external void * hmalloc_realloc(void *addr, size_t n_bytes) {
         new_addr = hmalloc_malloc(n_bytes);
     } else {
         if (likely(n_bytes > 0)) {
+            old_size = hmalloc_malloc_size(addr);
             /*
              * This is done for us in heap_alloc, but we'll
              * need the aligned value when we get the copy length.
              */
             n_bytes  = ALIGN(n_bytes, 8);
-            new_addr = hmalloc_malloc(n_bytes);
 
-            memcpy(new_addr, addr,
-                   MIN(hmalloc_malloc_size(addr), n_bytes));
+            /*
+             * If it's already big enough, just leave it.
+             * We won't worry about shrinking it.
+             * Saves us an alloc, free, and memcpy.
+             * Plus, we don't have to lock the thread.
+             */
+            if (old_size >= n_bytes) {
+                return addr;
+            }
+
+            new_addr = hmalloc_malloc(n_bytes);
+            memcpy(new_addr, addr, old_size);
         }
 
         hmalloc_free(addr);
@@ -108,20 +119,25 @@ external int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_by
 
 external size_t hmalloc_malloc_size(void *addr) {
     block_header_t *block;
+    chunk_header_t *chunk;
 
     if (unlikely(addr == NULL)) {
         return 0;
     }
 
-    /* 
-     * @incomplete
-     * What about big allocs???
-     */
-
     block = ADDR_PARENT_BLOCK(addr);
     
     if (likely(block->block_kind == BLOCK_KIND_CBLOCK)) {
-        return CHUNK_SIZE(CHUNK_FROM_USER_MEM(addr));
+        chunk = CHUNK_FROM_USER_MEM(addr);
+
+        if (unlikely(chunk->flags & CHUNK_IS_BIG)) {
+            /*
+             * Caculate size of cblock for big chunk.
+             */
+            return block->c.end - (void*)CHUNK_USER_MEM(chunk);
+        }
+
+        return CHUNK_SIZE(chunk);
     } else if (likely(block->block_kind == BLOCK_KIND_SBLOCK)) {
         return SBLOCK_SLOT_SIZE;
     }
