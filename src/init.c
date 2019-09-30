@@ -1,8 +1,10 @@
 #include "init.h"
 #include "os.h"
 #include "thread.h"
+#include "profile.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 
 internal void perform_sanity_checks(void) {
     chunk_header_t c;
@@ -16,6 +18,8 @@ internal void perform_sanity_checks(void) {
 }
 
 internal void hmalloc_init(void) {
+	const char *env_prof;
+
     /*
      * Thread-unsafe check for performance.
      * Could give a false positive.
@@ -37,6 +41,11 @@ internal void hmalloc_init(void) {
 #endif
             system_info_init();
             threads_init();
+
+			env_prof = getenv("HMALLOC_PROFILE");
+			if (env_prof) {
+				profile_init();
+			}
         } INIT_UNLOCK();
     }
 }

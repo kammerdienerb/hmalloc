@@ -20,15 +20,15 @@ internal void hmalloc_printf(int fd, const char *fmt, ...) {
 
 #ifdef HMALLOC_DO_LOGGING
 void log_init(void) {
-    /* int fd; */
+    int fd;
 
-    /* fd = open("hmalloc.log", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR); */
+    fd = open("hmalloc.log", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 
-    /* ASSERT(fd != -1, "could not open log file"); */
+    ASSERT(fd != -1, "could not open log file");
 
-    /* log_fd = fd; */
+    log_fd = fd;
 
-    /* LOG("intialized logging to 'hmalloc.log'\n"); */
+    LOG("intialized logging to 'hmalloc.log'\n");
 }
 #endif
 
@@ -40,7 +40,7 @@ internal void hmalloc_assert_fail(const char *msg, const char *fname, int line, 
                    "at  %s :: line %d\n"
                    "    Condition: '%s'\n"
                    , msg, fname, line, cond_str);
-    
+
     trap = 0;
     (void)*trap;
 }

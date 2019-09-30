@@ -9,7 +9,7 @@
 #include "thread.c"
 #include "os.c"
 #include "init.c"
-#include "internal.h"
+#include "profile.c"
 
 #include <string.h>
 #include <errno.h>
@@ -33,7 +33,7 @@ external void * hmalloc_calloc(size_t count, size_t n_bytes) {
     addr        = hmalloc_malloc(new_n_bytes);
 
     memset(addr, 0, new_n_bytes);
-    
+
     return addr;
 }
 
@@ -78,7 +78,7 @@ external void * hmalloc_reallocf(void *addr, size_t n_bytes) { return hmalloc_re
 external void * hmalloc_valloc(size_t n_bytes) {
     thread_data_t *thr;
     void          *addr;
-    
+
     thr  = acquire_this_thread();
     addr = heap_aligned_alloc(&thr->heap, n_bytes, system_info.page_size);
     release_thread(thr);
@@ -93,7 +93,7 @@ external void hmalloc_free(void *addr) {
     if (unlikely(addr == NULL)) {
         return;
     }
-    
+
     block = ADDR_PARENT_BLOCK(addr);
 
     thr = acquire_thread(block->tid);
@@ -103,7 +103,7 @@ external void hmalloc_free(void *addr) {
 
 external int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_bytes) {
     thread_data_t *thr;
-  
+
     if (unlikely(!IS_POWER_OF_TWO(alignment)
     ||  alignment < sizeof(void*))) {
         return EINVAL;
@@ -126,7 +126,7 @@ external size_t hmalloc_malloc_size(void *addr) {
     }
 
     block = ADDR_PARENT_BLOCK(addr);
-    
+
     if (likely(block->block_kind == BLOCK_KIND_CBLOCK)) {
         chunk = CHUNK_FROM_USER_MEM(addr);
 

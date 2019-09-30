@@ -49,7 +49,7 @@ typedef struct {
 #define ALL_SLOTS_AVAILABLE   (0ULL)
 #define ALL_SLOTS_TAKEN       (0xFFFFFFFFFFFFFFFFULL)
 
-#define SBLOCK_SLOT_SIZE      (512ULL)
+#define SBLOCK_SLOT_SIZE      (1024ULL)
 #define SBLOCK_MAX_ALLOC_SIZE (SBLOCK_SLOT_SIZE - sizeof(sblock_region_header_t))
 #define SBLOCK_REGION_SIZE    (64ULL * SBLOCK_SLOT_SIZE)
 
@@ -102,7 +102,7 @@ typedef struct {
                              ? NULL                                                                       \
                              :   ((void*)(addr))                                                          \
                                - (((chunk_header_t*)(addr))->offset_prev_words << 3ULL))
- 
+
 #define CHUNK_NEXT(addr)  ((chunk_header_t*)(unlikely(((chunk_header_t*)(addr))->offset_next_words == 0) \
                              ? NULL                                                                      \
                              :   ((void*)(addr))                                                         \
@@ -142,5 +142,9 @@ typedef struct {
 
 internal void heap_make(heap_t *heap);
 internal void * heap_alloc(heap_t *heap, u64 n_bytes);
+
+/* @eden */
+#undef  MAX_SMALL_CHUNK
+#define MAX_SMALL_CHUNK (SBLOCK_MAX_ALLOC_SIZE)
 
 #endif

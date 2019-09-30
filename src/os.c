@@ -42,6 +42,8 @@ internal void * get_pages_from_os(u64 n_pages, u64 alignment) {
     u64   desired_size,
           first_map_size;
 
+	ASSERT(n_pages > 0, "n_pages is zero");
+
     desired_size = (n_pages << system_info.log_2_page_size);
 
     ASSERT(desired_size >= alignment, "alignment greater than desired memory size");
@@ -84,6 +86,8 @@ internal void * get_pages_from_os(u64 n_pages, u64 alignment) {
 internal void release_pages_to_os(void *addr, u64 n_pages) {
     int err_code;
 
+	ASSERT(n_pages > 0, "n_pages is zero");
+
     err_code = munmap(addr, n_pages << system_info.log_2_page_size);
 
     ASSERT(err_code == 0, "munmap() failed!");
@@ -102,18 +106,18 @@ internal pid_t os_get_tid(void) {
      * thread.
      *
      * We shift by eleven because that number seemed to
-     * align with what the addresses were multiples of 
+     * align with what the addresses were multiples of
      * on the test OS.
      *
      * Should be pretty fast.
      */
     tid = (pid_t)((u64)&thr_handle >> 11);
-    
+
     /*
      * This method is slower because of the system call
-     * overhead, but it gives us less collisions.. 
+     * overhead, but it gives us less collisions..
      */
     /* return syscall(SYS_gettid); */
-    
+
     return tid;
 }
