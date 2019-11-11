@@ -2,6 +2,7 @@
 #include "heap.h"
 #include "os.h"
 #include "profile.h"
+#include "thread.h"
 
 #include <unistd.h>
 #include <string.h>
@@ -25,7 +26,7 @@ internal cblock_header_t * heap_new_cblock(heap_t *heap, u64 n_bytes) {
     ASSERT(IS_ALIGNED(avail, 8), "cblock memory isn't aligned properly");
 
     block             = get_pages_from_os(n_pages, DEFAULT_BLOCK_SIZE);
-    block->tid        = heap->tid;
+    block->heap__meta = heap->__meta;
     block->block_kind = BLOCK_KIND_CBLOCK;
     cblock            = &(block->c);
     cblock->end       = ((void*)cblock) + (n_pages << system_info.log_2_page_size);
@@ -98,7 +99,7 @@ internal sblock_header_t * heap_new_sblock(heap_t *heap) {
     n_pages = DEFAULT_BLOCK_SIZE >> system_info.log_2_page_size;
 
     block                              = get_pages_from_os(n_pages, DEFAULT_BLOCK_SIZE);
-    block->tid                         = heap->tid;
+    block->heap__meta                  = heap->__meta;
     block->block_kind                  = BLOCK_KIND_SBLOCK;
     sblock                             = &(block->s);
     sblock->bitfield_available_regions = ALL_REGIONS_AVAILABLE;
@@ -170,7 +171,14 @@ internal void heap_make(heap_t *heap) {
     heap->sblocks_head = heap->sblocks_tail = NULL;
 #endif
 
-    LOG("Created a new heap\n");
+    heap->__meta.tid    = 0;
+    heap->__meta.handle = NULL;
+    heap->__meta.hid    = __sync_fetch_and_add(&hid_counter, 1);
+    heap->__meta.flags  = 0;
+
+    pthread_mutex_init(&heap->mtx, NULL);
+
+    LOG("Created a new heap (hid = %d)\n", heap->__meta.hid);
 }
 
 internal void cblock_add_chunk_to_free_list(cblock_header_t *cblock, chunk_header_t *chunk) {
@@ -838,4 +846,57 @@ internal void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignmen
     ASSERT(mem == aligned_addr, "memory acquired from chunk is not the expected aligned address");
 
     return mem;
+}
+
+internal u64 heap_handle_hash(heap_handle_t h) {
+    unsigned long hash = 5381;
+    int           c;
+
+    while ((c = *h++))
+        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+
+    return hash;
+}
+
+internal void user_heaps_init(void) {
+    USER_HEAPS_LOCK(); {
+        user_heaps = hash_table_make(heap_handle_t, heap_t, heap_handle_hash);
+    } USER_HEAPS_UNLOCK();
+    LOG("initialized user heaps table\n");
+}
+
+internal char * istrdup(char *s) {
+    int   len;
+    char *out;
+
+    len = strlen(s);
+    out = imalloc(len + 1);
+    memcpy(out, s, len + 1);
+
+    return out;
+}
+
+internal heap_t * get_or_make_user_heap(char *handle) {
+    heap_t *heap,
+            new_heap;
+    char   *cpy;
+
+    USER_HEAPS_LOCK(); {
+        heap = hash_table_get_val(user_heaps, handle);
+        if (!heap) {
+            cpy = istrdup(handle);
+
+            heap_make(&new_heap);
+            new_heap.__meta.tid    = OS_TID_TO_HM_TID(os_get_tid());
+            new_heap.__meta.handle = cpy;
+            new_heap.__meta.flags |= HEAP_USER;
+
+            hash_table_insert(user_heaps, cpy, new_heap);
+            heap = hash_table_get_val(user_heaps, handle);
+
+            ASSERT(heap, "error creating new user heap");
+        }
+    } USER_HEAPS_UNLOCK();
+
+    return heap;
 }

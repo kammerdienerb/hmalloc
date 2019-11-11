@@ -16,9 +16,10 @@ internal void threads_init(void) {
 
 internal void thread_init(thread_data_t *thr, hm_tid_t tid) {
     heap_make(&thr->heap);
-    thr->heap.tid = tid;
-    thr->tid      = tid;
-    thr->is_valid = 1;
+    thr->heap.__meta.tid    = tid;
+    thr->heap.__meta.flags |= HEAP_THREAD;
+    thr->tid                = tid;
+    thr->is_valid           = 1;
 
     LOG("initialized a new thread with tid %hu\n", tid);
 }
@@ -50,7 +51,7 @@ internal thread_data_t * acquire_this_thread(void) {
      * Starting point in the thread_datas array.
      */
     os_tid = os_get_tid();
-    tid    = os_tid & (HMALLOC_MAX_THREADS - 1);
+    tid    = OS_TID_TO_HM_TID(os_tid);
 
     THR_DATA_LOCK(); {
         /*
@@ -83,9 +84,6 @@ internal thread_data_t * acquire_this_thread(void) {
 internal thread_data_t * acquire_thread(hm_tid_t tid) {
     thread_data_t *thr;
 
-    /* @temp */
-    /* tid = 0; */
-
     /* Ensure our system is initialized. */
     hmalloc_init();
 
@@ -100,4 +98,49 @@ internal thread_data_t * acquire_thread(hm_tid_t tid) {
 
 internal void release_thread(thread_data_t *thr) {
     THR_UNLOCK(thr);
+}
+
+internal heap_t * acquire_this_thread_heap(void) {
+    thread_data_t *thr;
+    heap_t        *heap;
+
+    thr  = acquire_this_thread();
+    heap = &thr->heap;
+
+    HEAP_LOCK(heap);
+
+    release_thread(thr);
+
+    return heap;
+}
+
+internal heap_t * acquire_thread_heap(hm_tid_t tid) {
+    thread_data_t *thr;
+    heap_t        *heap;
+
+    thr  = acquire_thread(tid);
+    heap = &thr->heap;
+
+    HEAP_LOCK(heap);
+
+    release_thread(thr);
+
+    return heap;
+}
+
+internal heap_t * acquire_user_heap(heap_handle_t handle) {
+    heap_t *heap;
+
+    /* Ensure our system is initialized. */
+    hmalloc_init();
+
+    heap = get_or_make_user_heap(handle);
+
+    HEAP_LOCK(heap);
+
+    return heap;
+}
+
+internal void release_heap(heap_t *heap) {
+    HEAP_UNLOCK(heap);
 }

@@ -2,6 +2,7 @@
 #define __HEAP_H__
 
 #include "internal.h"
+#include "hash_table.h"
 
 #include <pthread.h>
 
@@ -62,13 +63,25 @@ typedef struct {
         ? ((void*)(region)) + ((N) * SBLOCK_SLOT_SIZE)        \
         : ((void*)(region)) + sizeof(sblock_region_header_t))
 
+
+
+typedef struct {
+    union {
+        u16       tid;
+        char     *handle;
+    };
+    u32           hid;
+    u16           flags;
+} heap__meta_t;
+
+
 typedef struct {
     union {
         cblock_header_t c;
         sblock_header_t s;
     };
-    u8  block_kind;
-    u16 tid;
+    heap__meta_t        heap__meta;
+    u8                  block_kind;
 } block_header_t;
 
 
@@ -129,8 +142,12 @@ typedef struct {
 #define HEAP_QL_TINY_ARRAY_SIZE     (32)
 #define HEAP_QL_NOT_TINY_ARRAY_SIZE (32)
 
+#define HEAP_THREAD (0x1)
+#define HEAP_USER   (0x2)
+
+internal u32 hid_counter;
+
 typedef struct {
-    u16               tid;
     cblock_header_t  *cblocks_head,
                      *cblocks_tail,
                      *big_chunk_cblocks_tail;
@@ -138,10 +155,29 @@ typedef struct {
     sblock_header_t  *sblocks_head,
                      *sblocks_tail;
 #endif
+    heap__meta_t      __meta;
+    pthread_mutex_t   mtx;
 } heap_t;
 
 internal void heap_make(heap_t *heap);
 internal void * heap_alloc(heap_t *heap, u64 n_bytes);
+
+typedef char *heap_handle_t;
+
+#define malloc imalloc
+#define free   ifree
+use_hash_table(heap_handle_t, heap_t);
+#undef malloc
+#undef free
+
+internal hash_table(heap_handle_t, heap_t) user_heaps;
+
+pthread_mutex_t user_heaps_lock = PTHREAD_MUTEX_INITIALIZER;
+#define USER_HEAPS_LOCK()   HMALLOC_MTX_LOCKER(&user_heaps_lock)
+#define USER_HEAPS_UNLOCK() HMALLOC_MTX_UNLOCKER(&user_heaps_lock)
+
+internal void user_heaps_init(void);
+internal heap_t * get_or_make_user_heap(char *handle);
 
 /* @eden */
 #undef  MAX_SMALL_CHUNK

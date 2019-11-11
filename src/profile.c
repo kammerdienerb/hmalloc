@@ -378,7 +378,7 @@ PROF_BLOCKS_LOCK(); {
 
     obj.addr   = block;
     obj.size   = size;
-    obj.tid    = ((block_header_t*)block)->tid;
+    obj.tid    = ((block_header_t*)block)->heap__meta.tid;
     obj.shared = 0;
     obj.m_ns   = gettime_ns();
     obj.f_ns   = 0;

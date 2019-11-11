@@ -46,6 +46,8 @@ internal void hmalloc_init(void) {
 
             threads_init();
 
+            user_heaps_init();
+
             env_prof = getenv("HMALLOC_PROFILE");
 
             if (env_prof) {

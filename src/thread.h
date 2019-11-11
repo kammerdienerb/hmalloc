@@ -11,8 +11,8 @@
  * @TODO
  *
  * HMALLOC_MAX_THREADS should be something that's configured
- * at run time -- either through an environment variable, 
- * or computed on initialization by checking the number of 
+ * at run time -- either through an environment variable,
+ * or computed on initialization by checking the number of
  * threads on the system.
  *                                                -- Brandon
  */
@@ -22,7 +22,7 @@
 #define HMALLOC_MAX_THREADS (512ULL)
 #endif
 
-#if HMALLOC_MAX_THREADS > (2 << 16)
+#if HMALLOC_MAX_THREADS > (1 << 16)
     #error "Can't represent this many threads."
 #endif
 
@@ -52,10 +52,20 @@ internal thread_data_t * acquire_this_thread(void);
 internal thread_data_t * acquire_thread(hm_tid_t tid);
 internal void release_thread(thread_data_t *thr);
 
+internal heap_t * acquire_this_thread_heap(void);
+internal heap_t * acquire_thread_heap(hm_tid_t tid);
+internal heap_t * acquire_user_heap(heap_handle_t handle);
+internal void release_heap(heap_t *heap);
+
+#define HEAP_LOCK(heap_ptr)   HMALLOC_MTX_LOCKER(&heap_ptr->mtx)
+#define HEAP_UNLOCK(heap_ptr) HMALLOC_MTX_UNLOCKER(&heap_ptr->mtx)
+
 #define THR_LOCK(thr_ptr)   HMALLOC_MTX_LOCKER(&thr_ptr->mtx)
 #define THR_UNLOCK(thr_ptr) HMALLOC_MTX_UNLOCKER(&thr_ptr->mtx)
 
 #define THR_DATA_LOCK(thr_ptr)   HMALLOC_MTX_LOCKER(&thread_datas_mtx)
 #define THR_DATA_UNLOCK(thr_ptr) HMALLOC_MTX_UNLOCKER(&thread_datas_mtx)
+
+#define OS_TID_TO_HM_TID(os_tid) ((os_tid) & (HMALLOC_MAX_THREADS - 1))
 
 #endif

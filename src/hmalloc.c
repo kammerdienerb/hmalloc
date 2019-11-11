@@ -21,17 +21,28 @@
 #include <string.h>
 #include <errno.h>
 
+external void * hmalloc(heap_handle_t h, size_t n_bytes) {
+    heap_t *heap;
+    void   *addr;
+
+    heap = acquire_user_heap(h);
+    addr = heap_alloc(heap, n_bytes);
+    release_heap(heap);
+
+    return addr;
+}
+
 external void *hmalloc_malloc(size_t n_bytes) {
-    thread_data_t *thr;
-    void          *addr;
+    heap_t *heap;
+    void   *addr;
 
     if (unlikely(hmalloc_use_imalloc)) {
         return imalloc(n_bytes);
     }
 
-    thr  = acquire_this_thread();
-    addr = heap_alloc(&thr->heap, n_bytes);
-    release_thread(thr);
+    heap = acquire_this_thread_heap();
+    addr = heap_alloc(heap, n_bytes);
+    release_heap(heap);
 
     return addr;
 }
@@ -95,22 +106,22 @@ external void * hmalloc_realloc(void *addr, size_t n_bytes) {
 external void * hmalloc_reallocf(void *addr, size_t n_bytes) { return hmalloc_realloc(addr, n_bytes); }
 
 external void * hmalloc_valloc(size_t n_bytes) {
-    thread_data_t *thr;
-    void          *addr;
+    heap_t *heap;
+    void   *addr;
 
     if (unlikely(hmalloc_use_imalloc)) {
         return ivalloc(n_bytes);
     }
 
-    thr  = acquire_this_thread();
-    addr = heap_aligned_alloc(&thr->heap, n_bytes, system_info.page_size);
-    release_thread(thr);
+    heap = acquire_this_thread_heap();
+    addr = heap_aligned_alloc(heap, n_bytes, system_info.page_size);
+    release_heap(heap);
 
     return addr;
 }
 
 external void hmalloc_free(void *addr) {
-    thread_data_t  *thr;
+    heap_t         *heap;
     block_header_t *block;
 
     if (unlikely(hmalloc_use_imalloc)) {
@@ -124,13 +135,19 @@ external void hmalloc_free(void *addr) {
 
     block = ADDR_PARENT_BLOCK(addr);
 
-    thr = acquire_thread(block->tid);
-    heap_free(&thr->heap, addr);
-    release_thread(thr);
+    if (block->heap__meta.flags & HEAP_THREAD) {
+        heap = acquire_thread_heap(block->heap__meta.tid);
+    } else if (block->heap__meta.flags & HEAP_USER) {
+        heap = acquire_user_heap(block->heap__meta.handle);
+    } else {
+        ASSERT(0, "invalid block->heap__meta.flags\n");
+    }
+    heap_free(heap, addr);
+    release_heap(heap);
 }
 
 external int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_bytes) {
-    thread_data_t *thr;
+    heap_t *heap;
 
     if (unlikely(hmalloc_use_imalloc)) {
         return iposix_memalign(memptr, alignment, n_bytes);
@@ -141,25 +158,25 @@ external int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_by
         return EINVAL;
     }
 
-    thr     = acquire_this_thread();
-    *memptr = heap_aligned_alloc(&thr->heap, n_bytes, alignment);
-    release_thread(thr);
+    heap    = acquire_this_thread_heap();
+    *memptr = heap_aligned_alloc(heap, n_bytes, alignment);
+    release_heap(heap);
 
     if (unlikely(*memptr == NULL))    { return ENOMEM; }
     return 0;
 }
 
 external void * hmalloc_aligned_alloc(size_t alignment, size_t size) {
-    thread_data_t *thr;
-    void          *addr;
+    heap_t *heap;
+    void   *addr;
 
     if (unlikely(hmalloc_use_imalloc)) {
         return ialigned_alloc(alignment, size);
     }
 
-    thr  = acquire_this_thread();
-    addr = heap_aligned_alloc(&thr->heap, size, alignment);
-    release_thread(thr);
+    heap = acquire_this_thread_heap();
+    addr = heap_aligned_alloc(heap, size, alignment);
+    release_heap(heap);
 
     return addr;
 }
