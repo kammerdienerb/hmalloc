@@ -3,11 +3,13 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
+#include <dlfcn.h>
+#include <pthread.h>
 
 
 #define HMALLOC_ANSI_C
@@ -37,6 +39,9 @@
 #define internal static
 #define external extern
 
+#define HMALLOC_MTX_LOCKER(mtx_ptr)   do { pthread_mutex_lock(mtx_ptr);   } while (0)
+#define HMALLOC_MTX_UNLOCKER(mtx_ptr) do { pthread_mutex_unlock(mtx_ptr); } while (0)
+
 #include "FormatString.h"
 internal void hmalloc_putc(char c, void *fd);
 internal void hmalloc_printf(int fd, const char *fmt, ...);
@@ -52,9 +57,20 @@ do { if (unlikely(!(cond))) {                            \
 #endif
 
 #ifdef HMALLOC_DO_LOGGING
-internal int log_fd = 1;
-#define LOG(fmt, ...) \
-    hmalloc_printf(log_fd, "[ hmalloc :: %-15s :: %3d ] " fmt "", __FILE__, __LINE__, ##__VA_ARGS__)
+internal pthread_mutex_t log_mtx = PTHREAD_MUTEX_INITIALIZER;
+internal int log_fd              = 1;
+
+#define LOG_LOCK()   HMALLOC_MTX_LOCKER(&log_mtx)
+#define LOG_UNLOCK() HMALLOC_MTX_UNLOCKER(&log_mtx)
+
+#define LOG(fmt, ...)                                         \
+do {                                                          \
+    LOG_LOCK(); {                                             \
+        hmalloc_printf(log_fd,                                \
+                       "[ hmalloc :: %-21s :: %3d ] " fmt "", \
+                       __FILE__, __LINE__, ##__VA_ARGS__);    \
+    } LOG_UNLOCK();                                           \
+} while (0)
 
 void log_init(void);
 
@@ -90,17 +106,13 @@ void log_init(void);
                          >>16*((v)/2L>>31 > 0)))
 
 
+internal u64 next_power_of_2(u64 x);
+
 #define KiB(x) ((x) * 1024ULL)
 #define MiB(x) ((x) * 1024ULL * KiB(1ULL))
 #define GiB(x) ((x) * 1024ULL * MiB(1ULL))
 #define TiB(x) ((x) * 1024ULL * GiB(1ULL))
 
 #define DEFAULT_BLOCK_SIZE (MiB(4))
-
-#define HMALLOC_MTX_LOCKER(mtx_ptr)   do { pthread_mutex_lock(mtx_ptr);   } while (0)
-#define HMALLOC_MTX_UNLOCKER(mtx_ptr) do { pthread_mutex_unlock(mtx_ptr); } while (0)
-
-#define LOG_LOCK()   HMALLOC_MTX_LOCKER(&log_mtx)
-#define LOG_UNLOCK() HMALLOC_MTX_UNLOCKER(&log_mtx)
 
 #endif

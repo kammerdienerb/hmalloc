@@ -29,23 +29,6 @@ internal thread_data_t * acquire_locally(void) {
 }
 
 internal thread_data_t * acquire_this_thread(void) {
-
-    /* /1* Ensure our system is initialized. *1/ */
-    /* hmalloc_init(); */
-
-    /* thread_data_t *thr = thread_datas + 0; */
-    /* THR_LOCK(thr); */
-   
-    /* (void)thread_datas_mtx; */
-
-    /* if (!thr->is_valid) { */
-    /*     thread_init(thr, 0); */
-    /* } */
-
-    /* return thr; */
-
-    #if 1
-
     pid_t          os_tid;
     hm_tid_t       tid;
     thread_data_t *thr;
@@ -95,7 +78,6 @@ internal thread_data_t * acquire_this_thread(void) {
     THR_LOCK(local_thr);
 
     return local_thr;
-#endif
 }
 
 internal thread_data_t * acquire_thread(hm_tid_t tid) {

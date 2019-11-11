@@ -2,18 +2,103 @@
 #define __PROFILE_H__
 
 #include "internal.h"
+#include "hash_table.h"
+#include "array.h"
 
 #include <pthread.h>
-
+#include <linux/perf_event.h>
+#include <poll.h>
+#include <perfmon/pfmlib_perf_event.h>
 
 internal i32 doing_profiling;
 
+typedef void *block_addr_t;
+static inline u64 block_addr_hash(void *b) {
+    return ((u64)b) >> LOG2_64BIT(DEFAULT_BLOCK_SIZE);
+}
+
+internal u64 bucket_max_values[] = {
+    10000,
+    100000,
+    1000000,
+    10000000,
+    100000000,
+    1000000000,
+    10000000000,
+    100000000000,
+    1000000000000,
+    UINT64_MAX
+};
+
+#define N_BUCKETS (sizeof(bucket_max_values) / sizeof(u64))
+
 typedef struct {
-    i32 thread_started;
+    void  *addr;
+    u64    size;
+    i32    tid;
+    i32    shared;
+    u64    m_ns;
+    u64    f_ns;
+    u64    write_buckets[N_BUCKETS];
+} profile_obj_entry;
+
+#define malloc imalloc
+#define free   ifree
+use_hash_table(block_addr_t, profile_obj_entry);
+#undef malloc
+#undef free
+
+typedef struct {
+    i32                                          thread_started;
+    i32                                          should_stop;
+    u32                                          nom_freq;
+    hash_table(block_addr_t, profile_obj_entry)  blocks;
+    array_t                                      obj_buff;
+    i32                                          total_allocated;
+    int                                          fd;
 } profile_data;
 
 internal profile_data prof_data;
 
+pthread_mutex_t access_profile_flush_mutex        = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t access_profile_flush_signal_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t profile_blocks_mutex              = PTHREAD_MUTEX_INITIALIZER;
+#define PROF_BLOCKS_LOCK()   HMALLOC_MTX_LOCKER(&profile_blocks_mutex)
+#define PROF_BLOCKS_UNLOCK() HMALLOC_MTX_UNLOCKER(&profile_blocks_mutex)
+
+struct __attribute__ ((__packed__)) sample {
+    u32 pid, tid;
+    u64 time;
+    u64 addr;
+};
+
+typedef struct {
+    pthread_mutex_t              mtx;
+    pthread_t                    profile_id;
+
+    size_t                       pagesize;
+
+    /* For perf */
+    size_t                       size,
+                                 total;
+    struct perf_event_attr       pe;
+    struct perf_event_mmap_page *metadata;
+    int                          fd;
+    uint64_t                     consumed;
+    struct pollfd                pfd;
+    char                         oops;
+
+    /* For libpfm */
+    pfm_perf_encode_arg_t        pfm;
+} profile_info;
+
+
+
 internal void profile_init(void);
+internal void profile_add_block(void *block);
+internal void profile_delete_block(void *block);
+
+__attribute__((destructor))
+internal void profile_dump_remaining(void);
 
 #endif

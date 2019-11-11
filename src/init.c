@@ -1,4 +1,5 @@
 #include "init.h"
+#include "internal_malloc.h"
 #include "os.h"
 #include "thread.h"
 #include "profile.h"
@@ -18,7 +19,7 @@ internal void perform_sanity_checks(void) {
 }
 
 internal void hmalloc_init(void) {
-	const char *env_prof;
+    const char *env_prof;
 
     /*
      * Thread-unsafe check for performance.
@@ -34,18 +35,26 @@ internal void hmalloc_init(void) {
 
             perform_sanity_checks();
 
-            hmalloc_is_initialized = 1;
-
 #ifdef HMALLOC_DO_LOGGING
             log_init();
 #endif
             system_info_init();
+
+            hmalloc_use_imalloc = 1;
+
+            imalloc_init();
+
             threads_init();
 
-			env_prof = getenv("HMALLOC_PROFILE");
-			if (env_prof) {
-				profile_init();
-			}
+            env_prof = getenv("HMALLOC_PROFILE");
+
+            if (env_prof) {
+                profile_init();
+            }
+
+            hmalloc_use_imalloc    = 0;
+            hmalloc_is_initialized = 1;
+
         } INIT_UNLOCK();
     }
 }

@@ -16,8 +16,6 @@
 internal void system_info_init(void) {
     i64 page_size;
 
-    ASSERT(hmalloc_is_initialized, "premature system_info_init()");
-
     page_size = sysconf(_SC_PAGE_SIZE);
     ASSERT(page_size > (sizeof(chunk_header_t) + sizeof(block_header_t)),
            "invalid page size");
@@ -28,8 +26,8 @@ internal void system_info_init(void) {
     system_info.log_2_page_size = LOG2_64BIT(page_size);
 
     LOG("page_size:          %lu\n", system_info.page_size);
-    LOG("MAX_SMALL_CHUNK:    %lu\n", MAX_SMALL_CHUNK);
-    LOG("DEFAULT_BLOCK_SIZE: %lu\n", DEFAULT_BLOCK_SIZE);
+    LOG("MAX_SMALL_CHUNK:    %llu\n", MAX_SMALL_CHUNK);
+    LOG("DEFAULT_BLOCK_SIZE: %llu\n", DEFAULT_BLOCK_SIZE);
 
     LOG("initialized system info\n");
 }
@@ -42,7 +40,7 @@ internal void * get_pages_from_os(u64 n_pages, u64 alignment) {
     u64   desired_size,
           first_map_size;
 
-	ASSERT(n_pages > 0, "n_pages is zero");
+    ASSERT(n_pages > 0, "n_pages is zero");
 
     desired_size = (n_pages << system_info.log_2_page_size);
 
@@ -62,7 +60,7 @@ internal void * get_pages_from_os(u64 n_pages, u64 alignment) {
                 (off_t)0);
 
     if (unlikely(mem_start == MAP_FAILED || mem_start == NULL)) {
-        LOG("ERROR -- could not get %u pages (%llu bytes) from OS\n", n_pages, desired_size);
+        LOG("ERROR -- could not get %lu pages (%lu bytes) from OS\n", n_pages, desired_size);
         return NULL;
     }
 
@@ -86,7 +84,7 @@ internal void * get_pages_from_os(u64 n_pages, u64 alignment) {
 internal void release_pages_to_os(void *addr, u64 n_pages) {
     int err_code;
 
-	ASSERT(n_pages > 0, "n_pages is zero");
+    ASSERT(n_pages > 0, "n_pages is zero");
 
     err_code = munmap(addr, n_pages << system_info.log_2_page_size);
 
@@ -98,7 +96,7 @@ internal void release_pages_to_os(void *addr, u64 n_pages) {
 __thread int thr_handle;
 
 internal pid_t os_get_tid(void) {
-    pid_t tid;
+    /* pid_t tid; */
 
     /*
      * Use the address of a thread-local storage
@@ -111,13 +109,13 @@ internal pid_t os_get_tid(void) {
      *
      * Should be pretty fast.
      */
-    tid = (pid_t)((u64)&thr_handle >> 11);
+    /* tid = (pid_t)((u64)&thr_handle >> 11); */
 
     /*
      * This method is slower because of the system call
      * overhead, but it gives us less collisions..
      */
-    /* return syscall(SYS_gettid); */
+    return syscall(SYS_gettid);
 
-    return tid;
+    /* return tid; */
 }
