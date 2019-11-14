@@ -27,6 +27,7 @@ internal cblock_header_t * heap_new_cblock(heap_t *heap, u64 n_bytes) {
 
     block             = get_pages_from_os(n_pages, DEFAULT_BLOCK_SIZE);
     block->heap__meta = heap->__meta;
+    block->tid        = get_this_tid();
     block->block_kind = BLOCK_KIND_CBLOCK;
     cblock            = &(block->c);
     cblock->end       = ((void*)cblock) + (n_pages << system_info.log_2_page_size);
@@ -46,7 +47,7 @@ internal cblock_header_t * heap_new_cblock(heap_t *heap, u64 n_bytes) {
     cblock->free_list_head = cblock->free_list_tail = chunk;
 
     if (doing_profiling) {
-        profile_add_block(cblock);
+        profile_add_block(cblock, n_bytes);
     }
 
     return cblock;
@@ -100,6 +101,7 @@ internal sblock_header_t * heap_new_sblock(heap_t *heap) {
 
     block                              = get_pages_from_os(n_pages, DEFAULT_BLOCK_SIZE);
     block->heap__meta                  = heap->__meta;
+    block->tid                         = get_this_tid();
     block->block_kind                  = BLOCK_KIND_SBLOCK;
     sblock                             = &(block->s);
     sblock->bitfield_available_regions = ALL_REGIONS_AVAILABLE;
@@ -112,10 +114,6 @@ internal sblock_header_t * heap_new_sblock(heap_t *heap) {
      * it is, then our memory is zeroed for us.
      * We are done as far as initialization is concerned.
      */
-
-    if (doing_profiling) {
-        profile_add_block(sblock);
-    }
 
     return sblock;
 }
@@ -171,8 +169,8 @@ internal void heap_make(heap_t *heap) {
     heap->sblocks_head = heap->sblocks_tail = NULL;
 #endif
 
-    heap->__meta.tid    = 0;
     heap->__meta.handle = NULL;
+    heap->__meta.tid    = 0;
     heap->__meta.hid    = __sync_fetch_and_add(&hid_counter, 1);
     heap->__meta.flags  = 0;
 
@@ -848,6 +846,7 @@ internal void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignmen
     return mem;
 }
 
+internal i32 heap_handle_equ(heap_handle_t a, heap_handle_t b) { return strcmp(a, b) == 0; }
 internal u64 heap_handle_hash(heap_handle_t h) {
     unsigned long hash = 5381;
     int           c;
@@ -860,7 +859,7 @@ internal u64 heap_handle_hash(heap_handle_t h) {
 
 internal void user_heaps_init(void) {
     USER_HEAPS_LOCK(); {
-        user_heaps = hash_table_make(heap_handle_t, heap_t, heap_handle_hash);
+        user_heaps = hash_table_make_e(heap_handle_t, heap_t, heap_handle_hash, heap_handle_equ);
     } USER_HEAPS_UNLOCK();
     LOG("initialized user heaps table\n");
 }
@@ -887,7 +886,6 @@ internal heap_t * get_or_make_user_heap(char *handle) {
             cpy = istrdup(handle);
 
             heap_make(&new_heap);
-            new_heap.__meta.tid    = OS_TID_TO_HM_TID(os_get_tid());
             new_heap.__meta.handle = cpy;
             new_heap.__meta.flags |= HEAP_USER;
 
@@ -895,6 +893,8 @@ internal heap_t * get_or_make_user_heap(char *handle) {
             heap = hash_table_get_val(user_heaps, handle);
 
             ASSERT(heap, "error creating new user heap");
+
+            LOG("hid %d is a user heap (handle = '%s')\n", heap->__meta.hid, heap->__meta.handle);
         }
     } USER_HEAPS_UNLOCK();
 

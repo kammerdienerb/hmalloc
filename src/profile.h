@@ -35,6 +35,7 @@ internal u64 bucket_max_values[] = {
 typedef struct {
     void  *addr;
     u64    size;
+    char  *heap_handle;
     i32    tid;
     i32    shared;
     u64    m_ns;
@@ -95,7 +96,7 @@ typedef struct {
 
 
 internal void profile_init(void);
-internal void profile_add_block(void *block);
+internal void profile_add_block(void *block, u64 size);
 internal void profile_delete_block(void *block);
 
 __attribute__((destructor))

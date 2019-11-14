@@ -21,17 +21,6 @@
 #include <string.h>
 #include <errno.h>
 
-external void * hmalloc(heap_handle_t h, size_t n_bytes) {
-    heap_t *heap;
-    void   *addr;
-
-    heap = acquire_user_heap(h);
-    addr = heap_alloc(heap, n_bytes);
-    release_heap(heap);
-
-    return addr;
-}
-
 external void *hmalloc_malloc(size_t n_bytes) {
     heap_t *heap;
     void   *addr;
@@ -103,7 +92,10 @@ external void * hmalloc_realloc(void *addr, size_t n_bytes) {
 
     return new_addr;
 }
-external void * hmalloc_reallocf(void *addr, size_t n_bytes) { return hmalloc_realloc(addr, n_bytes); }
+
+external void * hmalloc_reallocf(void *addr, size_t n_bytes) {
+    return hmalloc_realloc(addr, n_bytes);
+}
 
 external void * hmalloc_valloc(size_t n_bytes) {
     heap_t *heap;
@@ -214,6 +206,124 @@ external size_t hmalloc_malloc_size(void *addr) {
 
     return 0;
 }
+
+
+external void * hmalloc(heap_handle_t h, size_t n_bytes) {
+    heap_t *heap;
+    void   *addr;
+
+    heap = acquire_user_heap(h);
+    addr = heap_alloc(heap, n_bytes);
+    release_heap(heap);
+
+    return addr;
+}
+
+external void * hcalloc(heap_handle_t h, size_t count, size_t n_bytes) {
+    void *addr;
+    u64   new_n_bytes;
+
+    new_n_bytes = count * n_bytes;
+    addr        = hmalloc(h, new_n_bytes);
+
+    memset(addr, 0, new_n_bytes);
+
+    return addr;
+}
+
+external void * hrealloc(heap_handle_t h, void *addr, size_t n_bytes) {
+    void *new_addr;
+    u64   old_size;
+
+    new_addr = NULL;
+
+    if (addr == NULL) {
+        new_addr = hmalloc(h, n_bytes);
+    } else {
+        if (likely(n_bytes > 0)) {
+            old_size = hmalloc_malloc_size(addr);
+            /*
+             * This is done for us in heap_alloc, but we'll
+             * need the aligned value when we get the copy length.
+             */
+            n_bytes  = ALIGN(n_bytes, 8);
+
+            /*
+             * If it's already big enough, just leave it.
+             * We won't worry about shrinking it.
+             * Saves us an alloc, free, and memcpy.
+             * Plus, we don't have to lock the thread.
+             */
+            if (old_size >= n_bytes) {
+                return addr;
+            }
+
+            new_addr = hmalloc(h, n_bytes);
+            memcpy(new_addr, addr, old_size);
+        }
+
+        hmalloc_free(addr);
+    }
+
+    return new_addr;
+}
+
+external void * hreallocf(heap_handle_t h, void *addr, size_t n_bytes) {
+    return hrealloc(h, addr, n_bytes);
+}
+
+external void * hvalloc(heap_handle_t h, size_t n_bytes) {
+    heap_t *heap;
+    void   *addr;
+
+    heap = acquire_user_heap(h);
+    addr = heap_aligned_alloc(heap, n_bytes, system_info.page_size);
+    release_heap(heap);
+
+    return addr;
+}
+
+external void hfree(void *addr)    { hmalloc_free(addr); }
+
+external int hposix_memalign(heap_handle_t h, void **memptr, size_t alignment, size_t size) {
+    heap_t *heap;
+
+    if (unlikely(!IS_POWER_OF_TWO(alignment)
+    ||  alignment < sizeof(void*))) {
+        return EINVAL;
+    }
+
+    heap    = acquire_user_heap(h);
+    *memptr = heap_aligned_alloc(heap, size, alignment);
+    release_heap(heap);
+
+    if (unlikely(*memptr == NULL))    { return ENOMEM; }
+    return 0;
+}
+
+external void * haligned_alloc(heap_handle_t h, size_t alignment, size_t size) {
+    heap_t *heap;
+    void   *addr;
+
+    heap = acquire_user_heap(h);
+    addr = heap_aligned_alloc(heap, size, alignment);
+    release_heap(heap);
+
+    return addr;
+}
+
+external void * hmemalign(heap_handle_t h, size_t alignment, size_t size) {
+    return haligned_alloc(h, alignment, size);
+}
+
+size_t hmalloc_size(void *addr) {
+    return hmalloc_malloc_size(addr);
+}
+
+size_t hmalloc_usable_size(void *addr) {
+    return hmalloc_malloc_size(addr);
+}
+
 
 external void * malloc(size_t n_bytes)               { return hmalloc_malloc(n_bytes);         }
 external void * calloc(size_t count, size_t n_bytes) { return hmalloc_calloc(count, n_bytes);  }

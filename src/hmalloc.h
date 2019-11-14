@@ -14,7 +14,20 @@ void   hmalloc_free(void *addr);
 int    hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_bytes);
 size_t hmalloc_malloc_size(void *addr);
 
+
 void * hmalloc(heap_handle_t h, size_t n_bytes);
+void * hcalloc(heap_handle_t h, size_t count, size_t n_bytes);
+void * hrealloc(heap_handle_t h, void *addr, size_t n_bytes);
+void * hreallocf(heap_handle_t h, void *addr, size_t n_bytes);
+void * hvalloc(heap_handle_t h, size_t n_bytes);
+void * hpvalloc(heap_handle_t h, size_t n_bytes);
+void   hfree(void *addr);
+int    hposix_memalign(heap_handle_t h, void **memptr, size_t alignment, size_t size);
+void * haligned_alloc(heap_handle_t h, size_t alignment, size_t size);
+void * hmemalign(heap_handle_t h, size_t alignment, size_t size);
+size_t hmalloc_size(void *addr);
+size_t hmalloc_usable_size(void *addr);
+
 
 void * malloc(size_t n_bytes);
 void * calloc(size_t count, size_t n_bytes);

@@ -67,11 +67,11 @@ typedef struct {
 
 typedef struct {
     union {
-        u16       tid;
-        char     *handle;
+        char *handle;
+        u16   tid;
     };
-    u32           hid;
-    u16           flags;
+    u32       hid;
+    u16       flags;
 } heap__meta_t;
 
 
@@ -81,6 +81,7 @@ typedef struct {
         sblock_header_t s;
     };
     heap__meta_t        heap__meta;
+    u16                 tid;
     u8                  block_kind;
 } block_header_t;
 

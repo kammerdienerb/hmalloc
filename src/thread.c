@@ -4,6 +4,8 @@
 #include "os.h"
 #include "init.h"
 
+internal hm_tid_t get_this_tid(void) { return OS_TID_TO_HM_TID(os_get_tid()); }
+
 internal void threads_init(void) {
     int i;
 
@@ -18,10 +20,10 @@ internal void thread_init(thread_data_t *thr, hm_tid_t tid) {
     heap_make(&thr->heap);
     thr->heap.__meta.tid    = tid;
     thr->heap.__meta.flags |= HEAP_THREAD;
-    thr->tid                = tid;
     thr->is_valid           = 1;
 
     LOG("initialized a new thread with tid %hu\n", tid);
+    LOG("hid %d is a thread heap (tid = '%d')\n", thr->heap.__meta.hid, thr->tid);
 }
 
 internal thread_data_t * acquire_locally(void) {
@@ -30,7 +32,6 @@ internal thread_data_t * acquire_locally(void) {
 }
 
 internal thread_data_t * acquire_this_thread(void) {
-    pid_t          os_tid;
     hm_tid_t       tid;
     thread_data_t *thr;
     int            count;
@@ -50,8 +51,7 @@ internal thread_data_t * acquire_this_thread(void) {
     /*
      * Starting point in the thread_datas array.
      */
-    os_tid = os_get_tid();
-    tid    = OS_TID_TO_HM_TID(os_tid);
+    tid = get_this_tid();
 
     THR_DATA_LOCK(); {
         /*

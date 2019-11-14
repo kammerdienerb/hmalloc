@@ -64,7 +64,7 @@ internal void write_header(void) {
     int i;
     u64 lo, hi;
 
-    profile_printf("addr, size, allocating thread, shared, alloc timestamp, free timestamp");
+    profile_printf("addr, size, user heap, allocating thread, shared, alloc timestamp, free timestamp");
 
     for (i = 0; i < N_BUCKETS; i += 1) {
         if (i == 0) { lo = 0;                        }
@@ -83,9 +83,10 @@ internal void write_header(void) {
 internal void write_obj(profile_obj_entry *obj) {
     int i;
 
-    profile_printf("0x%llx, %llu, %d, %d, %llu, %llu",
+    profile_printf("0x%llx, %llu, '%s', %d, %d, %llu, %llu",
                    obj->addr,
                    obj->size,
+                   obj->heap_handle ? obj->heap_handle : "<hmalloc thread heap>",
                    obj->tid,
                    obj->shared,
                    obj->m_ns,
@@ -355,9 +356,8 @@ internal void profile_init(void) {
     prof_data.thread_started = 1;
 }
 
-internal void profile_add_block(void *block) {
-    u64                size;
-    chunk_header_t    *chunk;
+internal void profile_add_block(void *block, u64 size) {
+    heap__meta_t      *__meta;
     profile_obj_entry  obj;
 
     ASSERT(doing_profiling, "can't add block when not profiling");
@@ -366,22 +366,19 @@ internal void profile_add_block(void *block) {
         return;
     }
 
-    /*
-     * Caculate size of cblock for big chunk.
-     */
-    chunk = CBLOCK_FIRST_CHUNK(block);
-    size  = ((block_header_t*)block)->c.end - (void*)CHUNK_USER_MEM(chunk);
+    __meta = &((block_header_t*)block)->heap__meta;
 
 PROF_BLOCKS_LOCK(); {
 
     prof_data.total_allocated += 1;
 
-    obj.addr   = block;
-    obj.size   = size;
-    obj.tid    = ((block_header_t*)block)->heap__meta.tid;
-    obj.shared = 0;
-    obj.m_ns   = gettime_ns();
-    obj.f_ns   = 0;
+    obj.addr        = block;
+    obj.size        = size;
+    obj.heap_handle = __meta->flags & HEAP_USER ? __meta->handle : NULL;
+    obj.tid         = ((block_header_t*)block)->tid;
+    obj.shared      = 0;
+    obj.m_ns        = gettime_ns();
+    obj.f_ns        = 0;
     memset(obj.write_buckets, 0, sizeof(u64) * N_BUCKETS);
     hash_table_insert(prof_data.blocks, block, obj);
 

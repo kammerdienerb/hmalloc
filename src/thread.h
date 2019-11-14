@@ -57,6 +57,8 @@ internal heap_t * acquire_thread_heap(hm_tid_t tid);
 internal heap_t * acquire_user_heap(heap_handle_t handle);
 internal void release_heap(heap_t *heap);
 
+internal hm_tid_t get_this_tid(void);
+
 #define HEAP_LOCK(heap_ptr)   HMALLOC_MTX_LOCKER(&heap_ptr->mtx)
 #define HEAP_UNLOCK(heap_ptr) HMALLOC_MTX_UNLOCKER(&heap_ptr->mtx)
 
