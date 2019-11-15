@@ -132,6 +132,7 @@ external void hmalloc_free(void *addr) {
     } else if (block->heap__meta.flags & HEAP_USER) {
         heap = acquire_user_heap(block->heap__meta.handle);
     } else {
+        heap = NULL;
         ASSERT(0, "invalid block->heap__meta.flags\n");
     }
     heap_free(heap, addr);

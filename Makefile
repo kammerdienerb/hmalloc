@@ -5,12 +5,12 @@ CFG_REL1=-O3 -DHMALLOC_DO_ASSERTIONS
 CFG_REL2=-g -O3
 CFG_REL3=-O3
 
-CFG=$(CFG_DEB1)
+# CFG=$(CFG_DEB1)
 # CFG=$(CFG_DEB2)
 # CFG=$(CFG_DEB3)
 # CFG=$(CFG_REL1)
 # CFG=$(CFG_REL2)
-# CFG=$(CFG_REL3)
+CFG=$(CFG_REL3)
 
 MAX_ERRS=-fmax-errors=3
 
@@ -27,7 +27,7 @@ the_lib:
 check: clean the_lib
 
 tests: clean the_lib
-	cd test && make && ./runtest.sh test && ./runtest.sh test_pp && ./runtest.sh test_thr
+	cd test && make && ./runtest.sh test && ./runtest.sh test_pp && ./runtest.sh user_heap
 
 clean:
 	rm -rf lib
