@@ -161,8 +161,15 @@ internal void profile_get_accesses(void) {
 
                 obj->shared |= (tid != obj->tid);
 
-                /* This assertion didn't fail on a test run. */
-/*                 ASSERT(tsc >= obj->m_ns, "how does time work?"); */
+                if (tsc < obj->m_ns) {
+                    /*
+                     * This most likely indicates that we've found a sample for
+                     * an object taht has been freed in the time between the actual
+                     * event and now. Ignore it.
+                     */
+                    goto inc;
+                }
+
                 tsc_diff = tsc - obj->m_ns;
                 for (i = 0; i < N_BUCKETS; i += 1) {
                     if (tsc_diff <= bucket_max_values[i]) {
