@@ -18,6 +18,7 @@ internal void threads_init(void) {
 
 internal void thread_init(thread_data_t *thr, hm_tid_t tid) {
     heap_make(&thr->heap);
+    thr->tid                = tid;
     thr->heap.__meta.tid    = tid;
     thr->heap.__meta.flags |= HEAP_THREAD;
     thr->is_valid           = 1;

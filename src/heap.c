@@ -46,10 +46,6 @@ internal cblock_header_t * heap_new_cblock(heap_t *heap, u64 n_bytes) {
 
     cblock->free_list_head = cblock->free_list_tail = chunk;
 
-    if (doing_profiling) {
-        profile_add_block(cblock, n_bytes);
-    }
-
     return cblock;
 }
 
@@ -445,19 +441,7 @@ internal void heap_free_big_chunk(heap_t *heap, chunk_header_t *big_chunk) {
 }
 
 internal chunk_header_t * heap_get_big_chunk(heap_t *heap, u64 n_bytes) {
-#if 0
-    cblock_header_t *cblock;
-    chunk_header_t  *chunk;
-
-    cblock = heap_new_cblock(heap, n_bytes);
-    chunk  = CBLOCK_FIRST_CHUNK(cblock);
-
-    chunk->flags &= ~(CHUNK_IS_FREE);
-    chunk->flags |=   CHUNK_IS_BIG;
-
-    return chunk;
-
-#endif
+    block_header_t  *block;
     cblock_header_t *cblock,
                     *next_cblock;
     chunk_header_t  *chunk;
@@ -494,6 +478,13 @@ internal chunk_header_t * heap_get_big_chunk(heap_t *heap, u64 n_bytes) {
     if (cblock == NULL) {
         cblock = heap_new_cblock(heap, n_bytes);
         chunk  = CBLOCK_FIRST_CHUNK(cblock);
+    }
+
+    block      = ADDR_PARENT_BLOCK(cblock);
+    block->tid = get_this_tid();
+
+    if (doing_profiling) {
+        profile_add_block(cblock, n_bytes);
     }
 
     chunk->flags &= ~(CHUNK_IS_FREE);
@@ -894,7 +885,7 @@ internal heap_t * get_or_make_user_heap(char *handle) {
 
             ASSERT(heap, "error creating new user heap");
 
-            LOG("hid %d is a user heap (handle = '%s')\n", heap->__meta.hid, heap->__meta.handle);
+            LOG("hid %d is a user heap created by tid %d (handle = '%s')\n", heap->__meta.hid, get_this_tid(), heap->__meta.handle);
         }
     } USER_HEAPS_UNLOCK();
 

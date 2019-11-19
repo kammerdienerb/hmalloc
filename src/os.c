@@ -96,7 +96,7 @@ internal void release_pages_to_os(void *addr, u64 n_pages) {
 __thread int thr_handle;
 
 internal pid_t os_get_tid(void) {
-    /* pid_t tid; */
+    pid_t tid;
 
     /*
      * Use the address of a thread-local storage
@@ -115,7 +115,9 @@ internal pid_t os_get_tid(void) {
      * This method is slower because of the system call
      * overhead, but it gives us less collisions..
      */
-    return syscall(SYS_gettid);
+    tid = syscall(SYS_gettid);
+    ASSERT(tid != -1, "did not get tid");
+    return tid;
 
     /* return tid; */
 }
