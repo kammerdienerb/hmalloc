@@ -19,8 +19,6 @@ internal void perform_sanity_checks(void) {
 }
 
 internal void hmalloc_init(void) {
-    const char *env_prof;
-
     /*
      * Thread-unsafe check for performance.
      * Could give a false positive.
@@ -40,6 +38,8 @@ internal void hmalloc_init(void) {
 #endif
             system_info_init();
 
+            LOG("main thread has tid %d\n", get_this_tid());
+
             hmalloc_use_imalloc = 1;
 
             imalloc_init();
@@ -47,12 +47,6 @@ internal void hmalloc_init(void) {
             threads_init();
 
             user_heaps_init();
-
-            env_prof = getenv("HMALLOC_PROFILE");
-
-            if (env_prof) {
-                profile_init();
-            }
 
             hmalloc_use_imalloc    = 0;
             hmalloc_is_initialized = 1;

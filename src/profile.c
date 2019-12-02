@@ -19,7 +19,7 @@ internal const char* accesses_event_strs[] = {
     NULL
 };
 
-internal i32          sample_period    = 1024;
+internal i32          sample_period    = 2048;
 internal i32          max_sample_pages = 128;
 internal float        profile_rate     = 0.5;
 internal profile_info prof;
@@ -110,8 +110,8 @@ internal i32 profile_should_stop(void) {
 }
 
 internal void profile_get_accesses(void) {
-    uint64_t                  head, tail, buf_size, id, *n_reads, tmp_id, *tmp_n_reads;
-    void                     *addr, *alloc_addr;
+    uint64_t                  head, tail, buf_size;
+    void                     *addr;
     char                     *base, *begin, *end;
     struct sample            *sample;
     struct perf_event_header *header;
@@ -120,12 +120,6 @@ internal void profile_get_accesses(void) {
     u64                       tsc, tsc_diff;
     profile_obj_entry        *obj;
     int                       i;
-
-    (void)alloc_addr;
-    (void)tmp_n_reads;
-    (void)tmp_id;
-    (void)n_reads;
-    (void)id;
 
     PROF_BLOCKS_LOCK(); {
         /* Get ready to read */
@@ -149,37 +143,40 @@ internal void profile_get_accesses(void) {
 
             sample = (struct sample *) (begin + sizeof(struct perf_event_header));
             addr   = (void *) (sample->addr);
+            tsc    = sample->time;
+            tid    = OS_TID_TO_HM_TID(sample->tid);
+            block  = ADDR_PARENT_BLOCK(addr);
 
-            if (addr) {
-                tsc    = sample->time;
-                tid    = sample->tid & (HMALLOC_MAX_THREADS - 1);
-                block  = ADDR_PARENT_BLOCK(addr);
+            LOG("!!! %d: %d -> %d\n", sample->pid, sample->tid, tid);
 
-                if (!(obj = hash_table_get_val(prof_data.blocks, block))) {
-                    goto inc;
-                }
-
-                obj->shared |= (tid != obj->tid);
-
-                if (tsc < obj->m_ns) {
-                    /*
-                     * This most likely indicates that we've found a sample for
-                     * an object taht has been freed in the time between the actual
-                     * event and now. Ignore it.
-                     */
-                    goto inc;
-                }
-
-                tsc_diff = tsc - obj->m_ns;
-                for (i = 0; i < N_BUCKETS; i += 1) {
-                    if (tsc_diff <= bucket_max_values[i]) {
-                        obj->write_buckets[i] += 1;
-                        break;
-                    }
-                }
-
-                prof.total++;
+            if (!(obj = hash_table_get_val(prof_data.blocks, block))) {
+                goto inc;
             }
+
+            tsc_diff     = tsc - obj->m_ns;
+            obj->shared |= (tid != obj->tid);
+
+            if (tsc < obj->m_ns) {
+                /*
+                 * This most likely indicates that we've found a sample for
+                 * an object that has been freed in the time between the actual
+                 * event and now. Ignore it.
+                 */
+                if (!prof_data.should_stop) {
+                    goto inc;
+                }
+            }
+
+
+            for (i = 0; i < N_BUCKETS; i += 1) {
+                if (tsc_diff <= bucket_max_values[i]) {
+                    obj->write_buckets[i] += 1;
+                    break;
+                }
+            }
+
+            prof.total++;
+
 inc:
             /* Increment begin by the size of the sample */
             if (((char *)header + header->size) == base + buf_size) {
@@ -205,33 +202,13 @@ inc:
 
 void* profile_fn(void *arg) {
     struct timespec timer;
-    uint64_t site, *n_reads;
     thread_data_t *thr;
 
-
-    (void)n_reads;
-    (void)site;
 
     LOG("(profile) profile_fn started\n");
     thr = acquire_this_thread();
     LOG("(profile) profiling thread has tid %d\n", thr->tid);
     release_thread(thr);
-
-    /* mmap the file */
-    prof.metadata = mmap(NULL, prof.pagesize + (prof.pagesize * max_sample_pages),
-                         PROT_READ | PROT_WRITE, MAP_SHARED, prof.fd, 0);
-    if (prof.metadata == MAP_FAILED) {
-        fprintf(stderr, "Failed to mmap room (%zu bytes) for perf samples. Aborting with:\n%s\n",
-                prof.pagesize + (prof.pagesize * max_sample_pages), strerror(errno));
-        exit(1);
-    }
-
-    /* Initialize */
-    ioctl(prof.fd, PERF_EVENT_IOC_RESET, 0);
-    ioctl(prof.fd, PERF_EVENT_IOC_ENABLE, 0);
-    prof.consumed = 0;
-    prof.total    = 0;
-    prof.oops     = 0;
 
     const uint64_t one_sec_in_ns = 1000000000;
     timer.tv_sec  = (uint64_t)profile_rate;
@@ -250,24 +227,21 @@ void* profile_fn(void *arg) {
 }
 
 void profile_get_event() {
-    const char **event, *buf;
+    const char **event;
     int          err, found;
-
-    (void)buf;
 
     pfm_initialize();
 
-    /* Iterate through the array of event strs and see which one works.
-     * For should_profile_one, just use the first given IMC. */
+    /* Iterate through the array of event strs and see which one works. */
     event = accesses_event_strs;
     found = 0;
-    while(*event != NULL) {
+    while (*event != NULL) {
         prof.pe.size  = sizeof(struct perf_event_attr);
         prof.pfm.size = sizeof(pfm_perf_encode_arg_t);
         prof.pfm.attr = &prof.pe;
         err = pfm_get_os_event_encoding(*event, PFM_PLM2 | PFM_PLM3, PFM_OS_PERF_EVENT, &prof.pfm);
 
-        if(err == PFM_SUCCESS) {
+        if (err == PFM_SUCCESS) {
             found = 1;
             break;
         }
@@ -275,7 +249,7 @@ void profile_get_event() {
         event++;
     }
 
-    if(!found) {
+    if (!found) {
         LOG("Couldn't find an appropriate event to use. (error %d) Aborting.\n", err);
         ASSERT(0, "couldn't find perf event");
     }
@@ -284,17 +258,66 @@ void profile_get_event() {
     prof.pe.sample_type    =   PERF_SAMPLE_TID
                              | PERF_SAMPLE_TIME
                              | PERF_SAMPLE_ADDR;
-    prof.pe.sample_period  = sample_period;
     prof.pe.mmap           = 1;
-    prof.pe.disabled       = 1;
     prof.pe.exclude_kernel = 1;
     prof.pe.exclude_hv     = 1;
     prof.pe.precise_ip     = 2;
     prof.pe.task           = 1;
+    prof.pe.use_clockid    = 1;
+    prof.pe.clockid        = CLOCK_MONOTONIC;
     prof.pe.sample_period  = sample_period;
+    prof.pe.disabled       = 1;
 }
 
 internal void start_profile_thread() {
+    /* Start the profiling thread */
+    pthread_mutex_init(&prof.mtx, NULL);
+    pthread_mutex_lock(&prof.mtx);
+    pthread_create(&prof.profile_id, NULL, &profile_fn, NULL);
+
+    LOG("initialized profiling thread\n");
+}
+
+internal void stop_profile_thread() {
+    /* Stop the actual sampling */
+    ioctl(prof.fd, PERF_EVENT_IOC_DISABLE, 0);
+
+    /* Stop the timers and join the threads */
+    pthread_mutex_unlock(&prof.mtx);
+    pthread_join(prof.profile_id, NULL);
+
+    close(prof.fd);
+}
+
+internal void trigger_access_info_flush() {
+    pthread_mutex_lock(&access_profile_flush_mutex);
+        /* signal */
+        pthread_mutex_unlock(&access_profile_flush_signal_mutex);
+    pthread_mutex_unlock(&access_profile_flush_mutex);
+}
+
+__attribute__((constructor))
+internal void profile_init(void) {
+    doing_profiling = !!getenv("HMALLOC_PROFILE");
+
+    if (!doing_profiling)    { return; }
+
+    hmalloc_init();
+
+    hmalloc_use_imalloc = 1;
+
+    prof_data.blocks = hash_table_make(block_addr_t, profile_obj_entry, block_addr_hash);
+    LOG("(profile) created blocks hash table\n");
+    prof_data.obj_buff = array_make(profile_obj_entry);
+    LOG("(profile) created object buffer\n");
+    prof_data.fd = open("hmalloc.profile", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    ASSERT(prof_data.fd >= 0, "could not open profile output file");
+    LOG("(profile) opened profile output file\n");
+    write_header();
+
+    pthread_mutex_lock(&access_profile_flush_signal_mutex);
+
+
     prof.pagesize = (size_t) sysconf(_SC_PAGESIZE);
 
     prof.fd  = 0;
@@ -311,56 +334,30 @@ internal void start_profile_thread() {
     }
     LOG("(profile) fd is %d\n", prof.fd);
 
-    /* Start the profiling threads */
-    pthread_mutex_init(&prof.mtx, NULL);
-    pthread_mutex_lock(&prof.mtx);
-    pthread_create(&prof.profile_id, NULL, &profile_fn, NULL);
+    LOG("(profile) perf event opened from tid %d (os %d)\n", get_this_tid(), os_get_tid());
+    prof_data.tid = get_this_tid();
 
-    LOG("initialized profiling thread\n");
-}
+    /* mmap the file */
+    prof.metadata = mmap(NULL, prof.pagesize + (prof.pagesize * max_sample_pages),
+                         PROT_READ | PROT_WRITE, MAP_SHARED, prof.fd, 0);
+    if (prof.metadata == MAP_FAILED) {
+        fprintf(stderr, "Failed to mmap room (%zu bytes) for perf samples (fd = %d). Aborting with:\n(%d) %s\n",
+                prof.pagesize + (prof.pagesize * max_sample_pages), prof.fd, errno, strerror(errno));
+        exit(1);
+    }
 
-internal void stop_profile_thread() {
-    size_t i, associated;
-
-    (void)i;
-    (void)associated;
-
-    /* Stop the actual sampling */
-    ioctl(prof.fd, PERF_EVENT_IOC_DISABLE, 0);
-
-    /* Stop the timers and join the threads */
-    pthread_mutex_unlock(&prof.mtx);
-    pthread_join(prof.profile_id, NULL);
-
-    close(prof.fd);
-
-    printf("Done profiling.\n");
-}
-
-internal void trigger_access_info_flush() {
-    pthread_mutex_lock(&access_profile_flush_mutex);
-        /* signal */
-        pthread_mutex_unlock(&access_profile_flush_signal_mutex);
-    pthread_mutex_unlock(&access_profile_flush_mutex);
-}
-
-internal void profile_init(void) {
-    doing_profiling = 1;
-
-    prof_data.blocks = hash_table_make(block_addr_t, profile_obj_entry, block_addr_hash);
-    LOG("(profile) created blocks hash table\n");
-    prof_data.obj_buff = array_make(profile_obj_entry);
-    LOG("(profile) created object buffer\n");
-    prof_data.fd = open("hmalloc.profile", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-    ASSERT(prof_data.fd >= 0, "could not open profile output file");
-    LOG("(profile) opened profile output file\n");
-    write_header();
-
-    pthread_mutex_lock(&access_profile_flush_signal_mutex);
+    /* Initialize */
+    ioctl(prof.fd, PERF_EVENT_IOC_RESET, 0);
+    ioctl(prof.fd, PERF_EVENT_IOC_ENABLE, 0);
+    prof.consumed = 0;
+    prof.total    = 0;
+    prof.oops     = 0;
 
     start_profile_thread();
 
     prof_data.thread_started = 1;
+
+    hmalloc_use_imalloc = 0;
 }
 
 internal void profile_add_block(void *block, u64 size) {
@@ -415,14 +412,29 @@ PROF_BLOCKS_LOCK(); {
 
 __attribute__((destructor))
 internal void profile_dump_remaining(void) {
+    void              *block;
     profile_obj_entry *obj;
 
     if (!prof_data.thread_started) {
         return;
     }
 
+    prof_data.should_stop= 1;
+    stop_profile_thread();
+
+PROF_BLOCKS_LOCK(); {
+
+    hash_table_traverse(prof_data.blocks, block, obj) {
+        (void)block;
+        obj->f_ns = gettime_ns();
+        array_push(prof_data.obj_buff, *obj);
+    }
+
     /* Write out all of the objects in the buffer. */
     array_traverse(prof_data.obj_buff, obj) {
         write_obj(obj);
     }
+} PROF_BLOCKS_UNLOCK();
+
+    LOG("(profile) %llu total samples\n", prof.total);
 }

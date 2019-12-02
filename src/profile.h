@@ -57,6 +57,7 @@ typedef struct {
     array_t                                      obj_buff;
     i32                                          total_allocated;
     int                                          fd;
+    i32                                          tid;
 } profile_data;
 
 internal profile_data prof_data;
@@ -68,7 +69,8 @@ pthread_mutex_t profile_blocks_mutex              = PTHREAD_MUTEX_INITIALIZER;
 #define PROF_BLOCKS_UNLOCK() HMALLOC_MTX_UNLOCKER(&profile_blocks_mutex)
 
 struct __attribute__ ((__packed__)) sample {
-    u32 pid, tid;
+    u32 pid;
+    u32 tid;
     u64 time;
     u64 addr;
 };
