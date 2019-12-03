@@ -246,6 +246,7 @@ void profile_get_event(int cpu) {
     /* Iterate through the array of event strs and see which one works. */
     event = accesses_event_strs;
     found = 0;
+    err   = 0;
     while (*event != NULL) {
         profs[cpu].pe.size  = sizeof(struct perf_event_attr);
         profs[cpu].pfm.size = sizeof(pfm_perf_encode_arg_t);
