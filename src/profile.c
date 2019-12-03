@@ -311,17 +311,12 @@ internal void trigger_access_info_flush() {
     pthread_mutex_unlock(&access_profile_flush_mutex);
 }
 
-__attribute__((constructor))
 internal void profile_init(void) {
     int fd;
 
     doing_profiling = !!getenv("HMALLOC_PROFILE");
 
     if (!doing_profiling)    { return; }
-
-    hmalloc_init();
-
-    hmalloc_use_imalloc = 1;
 
     prof_data.blocks = hash_table_make(block_addr_t, profile_obj_entry_ptr, block_addr_hash);
     LOG("(profile) created blocks hash table\n");
@@ -452,8 +447,7 @@ PROF_BLOCKS_LOCK(); {
 } PROF_BLOCKS_UNLOCK();
 }
 
-__attribute__((destructor))
-internal void profile_dump_remaining(void) {
+internal void profile_fini(void) {
     void               *block;
     profile_obj_entry **obj;
 
@@ -461,7 +455,7 @@ internal void profile_dump_remaining(void) {
         return;
     }
 
-    prof_data.should_stop= 1;
+    prof_data.should_stop = 1;
     stop_profile_thread();
 
 PROF_BLOCKS_LOCK(); {

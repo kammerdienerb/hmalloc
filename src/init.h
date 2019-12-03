@@ -12,6 +12,7 @@ internal pthread_mutex_t hmalloc_init_lock = PTHREAD_MUTEX_INITIALIZER;
 
 internal int hmalloc_is_initialized = 0;
 internal int hmalloc_use_imalloc    = 0;
+internal int hmalloc_ignore_frees   = 0;
 
 
 internal void hmalloc_init(void);

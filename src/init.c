@@ -48,6 +48,8 @@ internal void hmalloc_init(void) {
 
             user_heaps_init();
 
+            profile_init();
+
             hmalloc_use_imalloc    = 0;
             hmalloc_is_initialized = 1;
 
@@ -57,16 +59,17 @@ internal void hmalloc_init(void) {
 
 __attribute__((destructor))
 internal void hmalloc_fini(void) {
-    /* INIT_LOCK(); { */
-    /*     if (!hmalloc_is_initialized) { */
-    /*         INIT_UNLOCK(); */
-    /*         return; */
-    /*     } */
 
-    /*     thread_local_fini(); */
+    if (doing_profiling) {
+        profile_fini();
+    }
 
-    /*     hmalloc_is_initialized = 0; */
-
-    /*     LOG("hmalloc shut down\n"); */
-    /* } INIT_UNLOCK(); */
+    /*
+     * After this point, we're going to stop servicing `free`s.
+     * We're shutting down, so it'll be assumed that the rest of
+     * our infrastructure isn't guaranteed to be operational.
+     *
+     *                                           - Brandon, 2019
+     */
+    hmalloc_ignore_frees = 1;
 }

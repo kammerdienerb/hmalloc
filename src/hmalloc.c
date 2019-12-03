@@ -116,6 +116,10 @@ external void hmalloc_free(void *addr) {
     heap_t         *heap;
     block_header_t *block;
 
+    if (unlikely(hmalloc_ignore_frees)) {
+        return;
+    }
+
     if (unlikely(hmalloc_use_imalloc)) {
         ifree(addr);
         return;

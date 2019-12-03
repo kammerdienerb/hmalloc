@@ -95,6 +95,7 @@ typedef struct {
 
 
 internal void profile_init(void);
+internal void profile_fini(void);
 internal void profile_add_block(void *block, u64 size);
 internal void profile_delete_block(void *block);
 
