@@ -41,23 +41,28 @@ typedef struct {
     u64    m_ns;
     u64    f_ns;
     u64    write_buckets[N_BUCKETS];
-} profile_obj_entry;
+} profile_obj_entry, *profile_obj_entry_ptr;
 
 #define malloc imalloc
 #define free   ifree
-use_hash_table(block_addr_t, profile_obj_entry);
+use_hash_table(block_addr_t, profile_obj_entry_ptr);
 #undef malloc
 #undef free
 
 typedef struct {
-    i32                                          thread_started;
-    i32                                          should_stop;
-    u32                                          nom_freq;
-    hash_table(block_addr_t, profile_obj_entry)  blocks;
-    array_t                                      obj_buff;
-    i32                                          total_allocated;
-    int                                          fd;
-    i32                                          tid;
+    i32                                             thread_started;
+    i32                                             should_stop;
+    u32                                             nom_freq;
+    hash_table(block_addr_t, profile_obj_entry_ptr) blocks;
+    array_t                                         obj_buff;
+    i32                                             total_allocated;
+    int                                             fd;
+    i32                                             tid;
+    i32                                             pid;
+    u64                                             pagesize;
+    u64                                             total;
+    pthread_mutex_t                                 mtx;
+    pthread_t                                       profile_id;
 } profile_data;
 
 internal profile_data prof_data;
@@ -76,20 +81,12 @@ struct __attribute__ ((__packed__)) sample {
 };
 
 typedef struct {
-    pthread_mutex_t              mtx;
-    pthread_t                    profile_id;
-
-    size_t                       pagesize;
-
     /* For perf */
-    size_t                       size,
-                                 total;
+    size_t                       size;
     struct perf_event_attr       pe;
     struct perf_event_mmap_page *metadata;
     int                          fd;
-    uint64_t                     consumed;
     struct pollfd                pfd;
-    char                         oops;
 
     /* For libpfm */
     pfm_perf_encode_arg_t        pfm;
