@@ -14,15 +14,11 @@
 #include <sys/time.h>
 #include <cpuid.h>
 
-internal const char* accesses_event_strs[] = {
-    "MEM_INST_RETIRED:ALL_STORES",
-    NULL
-};
-
 internal i32          sample_period    = 2048;
 internal i32          max_sample_pages = 128;
 internal float        profile_rate     = 0.5;
-internal profile_info profs[2048];
+internal profile_info w_profs[2048];
+internal profile_info r_profs[2048];
 internal int          n_profs;
 
 internal u32 get_cpu_freq(void) {
@@ -65,7 +61,7 @@ internal void write_header(void) {
     int i;
     u64 lo, hi;
 
-    profile_printf("addr, size, user heap, allocating thread, shared, alloc timestamp, free timestamp");
+    profile_printf("addr,size,user heap,allocating thread,shared,alloc timestamp,free timestamp");
 
     for (i = 0; i < N_BUCKETS; i += 1) {
         if (i == 0) { lo = 0;                        }
@@ -73,18 +69,31 @@ internal void write_header(void) {
         hi = bucket_max_values[i];
 
         if (i == N_BUCKETS - 1) {
-            profile_printf(", %llu - inifinity", lo);
+            profile_printf(",%llu - inifinity", lo);
         } else {
-            profile_printf(", %llu - %llu", lo, hi);
+            profile_printf(",%llu - %llu", lo, hi);
         }
     }
+    profile_printf(",last write timestamp");
+    for (i = 0; i < N_BUCKETS; i += 1) {
+        if (i == 0) { lo = 0;                        }
+        else        { lo = bucket_max_values[i - 1]; }
+        hi = bucket_max_values[i];
+
+        if (i == N_BUCKETS - 1) {
+            profile_printf(",%llu - inifinity", lo);
+        } else {
+            profile_printf(",%llu - %llu", lo, hi);
+        }
+    }
+    profile_printf(",last read timestamp");
     profile_printf("\n");
 }
 
 internal void write_obj(profile_obj_entry *obj) {
     int i;
 
-    profile_printf("0x%llx, %llu, '%s', %d, %d, %llu, %llu",
+    profile_printf("0x%llx,%llu,'%s',%d,%d,%llu,%llu",
                    obj->addr,
                    obj->size,
                    obj->heap_handle ? obj->heap_handle : "<hmalloc thread heap>",
@@ -94,8 +103,13 @@ internal void write_obj(profile_obj_entry *obj) {
                    obj->f_ns);
 
     for (i = 0; i < N_BUCKETS; i += 1) {
-        profile_printf(", %llu", obj->write_buckets[i]);
+        profile_printf(",%llu", obj->write_buckets[i]);
     }
+    profile_printf(",%llu", obj->last_write_ns);
+    for (i = 0; i < N_BUCKETS; i += 1) {
+        profile_printf(",%llu", obj->read_buckets[i]);
+    }
+    profile_printf(",%llu", obj->last_read_ns);
     profile_printf("\n");
 }
 
@@ -110,7 +124,103 @@ internal i32 profile_should_stop(void) {
     return 1;
 }
 
-internal void profile_get_accesses_for_cpu(int cpu) {
+internal void profile_get_w_accesses_for_cpu(int cpu, profile_info *profs) {
+    uint64_t                  head, tail, buf_size;
+    void                     *addr;
+    char                     *base, *begin, *end;
+    struct sample            *sample;
+    struct perf_event_header *header;
+    block_header_t           *block;
+    u32                       pid;
+    u32                       tid;
+    u64                       tsc, tsc_diff;
+    union perf_mem_data_src   data_src;
+    profile_obj_entry       **m_obj, *obj;
+    int                       i, is_hit, lvl;
+
+    PROF_BLOCKS_LOCK(); {
+        /* Get ready to read */
+        head     = profs[cpu].metadata->data_head;
+        tail     = profs[cpu].metadata->data_tail;
+        buf_size = prof_data.pagesize * max_sample_pages;
+        asm volatile("" ::: "memory"); /* Block after reading data_head, per perf docs */
+
+        base  = (char *)profs[cpu].metadata + prof_data.pagesize;
+        begin = base + tail % buf_size;
+        end   = base + head % buf_size;
+
+        /* Read all of the samples */
+        while (begin != end) {
+            header = (struct perf_event_header *)begin;
+            if (header->size == 0) {
+                break;
+            } else if (header->type != PERF_RECORD_SAMPLE) {
+                goto inc;
+            }
+
+            sample = (struct sample *) (begin + sizeof(struct perf_event_header));
+            pid    = sample->pid;
+
+            if (pid != prof_data.pid)    { goto inc; }
+
+            data_src = sample->data_src;
+            addr     = (void *) (sample->addr);
+            block    = ADDR_PARENT_BLOCK(addr);
+
+            (void)data_src;
+            (void)is_hit;
+            (void)lvl;
+
+            if (!(m_obj = hash_table_get_val(prof_data.blocks, block))) {
+                goto inc;
+            }
+
+            obj = *m_obj;
+
+            tsc = sample->time;
+
+            if (tsc < obj->m_ns) {
+                /*
+                 * This most likely indicates that we've found a sample for
+                 * an object that has been freed in the time between the actual
+                 * event and now. Ignore it.
+                 */
+                if (!prof_data.should_stop) {
+                    goto inc;
+                }
+            }
+
+            tid                 = OS_TID_TO_HM_TID(sample->tid);
+            obj->shared        |= (tid != obj->tid);
+
+            tsc_diff           = tsc - obj->m_ns;
+            obj->last_write_ns = tsc;
+
+            for (i = 0; i < N_BUCKETS; i += 1) {
+                if (tsc_diff <= bucket_max_values[i]) {
+                    obj->write_buckets[i] += 1;
+                    break;
+                }
+            }
+
+            prof_data.total++;
+
+inc:
+            /* Increment begin by the size of the sample */
+            if (((char *)header + header->size) == base + buf_size) {
+                begin = base;
+            } else {
+                begin = begin + header->size;
+            }
+        }
+    } PROF_BLOCKS_UNLOCK();
+
+    /* Let perf know that we've read this far */
+    profs[cpu].metadata->data_tail = head;
+    __sync_synchronize();
+}
+
+internal void profile_get_r_accesses_for_cpu(int cpu, profile_info *profs) {
     uint64_t                  head, tail, buf_size;
     void                     *addr;
     char                     *base, *begin, *end;
@@ -144,13 +254,12 @@ internal void profile_get_accesses_for_cpu(int cpu) {
             }
 
             sample = (struct sample *) (begin + sizeof(struct perf_event_header));
-            addr   = (void *) (sample->addr);
-            tsc    = sample->time;
             pid    = sample->pid;
-            tid    = OS_TID_TO_HM_TID(sample->tid);
-            block  = ADDR_PARENT_BLOCK(addr);
 
             if (pid != prof_data.pid)    { goto inc; }
+
+            addr  = (void *) (sample->addr);
+            block = ADDR_PARENT_BLOCK(addr);
 
             if (!(m_obj = hash_table_get_val(prof_data.blocks, block))) {
                 goto inc;
@@ -158,8 +267,7 @@ internal void profile_get_accesses_for_cpu(int cpu) {
 
             obj = *m_obj;
 
-            tsc_diff     = tsc - obj->m_ns;
-            obj->shared |= (tid != obj->tid);
+            tsc = sample->time;
 
             if (tsc < obj->m_ns) {
                 /*
@@ -172,13 +280,19 @@ internal void profile_get_accesses_for_cpu(int cpu) {
                 }
             }
 
+            tid          = OS_TID_TO_HM_TID(sample->tid);
+            obj->shared |= (tid != obj->tid);
+
+            tsc_diff = tsc - obj->m_ns;
 
             for (i = 0; i < N_BUCKETS; i += 1) {
                 if (tsc_diff <= bucket_max_values[i]) {
-                    obj->write_buckets[i] += 1;
+                    obj->read_buckets[i] += 1;
                     break;
                 }
             }
+
+            obj->last_write_ns = tsc;
 
             prof_data.total++;
 
@@ -191,13 +305,6 @@ inc:
             }
         }
 
-        /* Write out all of the objects in the buffer. */
-        array_traverse(prof_data.obj_buff, m_obj) {
-            write_obj(*m_obj);
-            ifree(*m_obj);
-        }
-
-        array_clear(prof_data.obj_buff);
     } PROF_BLOCKS_UNLOCK();
 
     /* Let perf know that we've read this far */
@@ -206,9 +313,23 @@ inc:
 }
 
 internal void profile_get_accesses(void) {
-    for (int i = 0; i < n_profs; i += 1) {
-        profile_get_accesses_for_cpu(i);
+    profile_obj_entry **m_obj;
+    int                 i;
+
+    for (i = 0; i < n_profs; i += 1) {
+        profile_get_r_accesses_for_cpu(i, r_profs);
     }
+    for (i = 0; i < n_profs; i += 1) {
+        profile_get_w_accesses_for_cpu(i, w_profs);
+    }
+
+    /* Write out all of the objects in the buffer. */
+    array_traverse(prof_data.obj_buff, m_obj) {
+        write_obj(*m_obj);
+        ifree(*m_obj);
+    }
+
+    array_clear(prof_data.obj_buff);
 }
 
 void* profile_fn(void *arg) {
@@ -237,31 +358,17 @@ void* profile_fn(void *arg) {
     return NULL;
 }
 
-void profile_get_event(int cpu) {
-    const char **event;
-    int          err, found;
+void profile_get_event(int cpu, profile_info *profs, char *event) {
+    int err;
 
     pfm_initialize();
 
-    /* Iterate through the array of event strs and see which one works. */
-    event = accesses_event_strs;
-    found = 0;
-    err   = 0;
-    while (*event != NULL) {
-        profs[cpu].pe.size  = sizeof(struct perf_event_attr);
-        profs[cpu].pfm.size = sizeof(pfm_perf_encode_arg_t);
-        profs[cpu].pfm.attr = &profs[cpu].pe;
-        err = pfm_get_os_event_encoding(*event, PFM_PLM2 | PFM_PLM3, PFM_OS_PERF_EVENT, &profs[cpu].pfm);
+    profs[cpu].pe.size  = sizeof(struct perf_event_attr);
+    profs[cpu].pfm.size = sizeof(pfm_perf_encode_arg_t);
+    profs[cpu].pfm.attr = &profs[cpu].pe;
+    err = pfm_get_os_event_encoding(event, PFM_PLM2 | PFM_PLM3, PFM_OS_PERF_EVENT, &profs[cpu].pfm);
 
-        if (err == PFM_SUCCESS) {
-            found = 1;
-            break;
-        }
-
-        event++;
-    }
-
-    if (!found) {
+    if (err != PFM_SUCCESS) {
         LOG("Couldn't find an appropriate event to use. (error %d) Aborting.\n", err);
         ASSERT(0, "couldn't find perf event");
     }
@@ -269,7 +376,8 @@ void profile_get_event(int cpu) {
     /* perf_event_open */
     profs[cpu].pe.sample_type    =   PERF_SAMPLE_TID
                                    | PERF_SAMPLE_TIME
-                                   | PERF_SAMPLE_ADDR;
+                                   | PERF_SAMPLE_ADDR
+                                   | PERF_SAMPLE_DATA_SRC;
     profs[cpu].pe.mmap           = 1;
     profs[cpu].pe.exclude_kernel = 1;
     profs[cpu].pe.exclude_hv     = 1;
@@ -295,8 +403,10 @@ internal void stop_profile_thread() {
 
     for (i = 0; i < n_profs; i += 1) {
         /* Stop the actual sampling */
-        ioctl(profs[i].fd, PERF_EVENT_IOC_DISABLE, 0);
-        close(profs[i].fd);
+        ioctl(w_profs[i].fd, PERF_EVENT_IOC_DISABLE, 0);
+        close(w_profs[i].fd);
+        ioctl(r_profs[i].fd, PERF_EVENT_IOC_DISABLE, 0);
+        close(r_profs[i].fd);
     }
 
     /* Stop the timers and join the threads */
@@ -311,33 +421,14 @@ internal void trigger_access_info_flush() {
     pthread_mutex_unlock(&access_profile_flush_mutex);
 }
 
-internal void profile_init(void) {
+internal void profile_init_events(profile_info *profs, char *event) {
     int fd;
 
-    doing_profiling = !!getenv("HMALLOC_PROFILE");
-
-    if (!doing_profiling)    { return; }
-
-    prof_data.blocks = hash_table_make(block_addr_t, profile_obj_entry_ptr, block_addr_hash);
-    LOG("(profile) created blocks hash table\n");
-    prof_data.obj_buff = array_make(profile_obj_entry_ptr);
-    LOG("(profile) created object buffer\n");
-    prof_data.fd = open("hmalloc.profile", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-    ASSERT(prof_data.fd >= 0, "could not open profile output file");
-    LOG("(profile) opened profile output file\n");
-    write_header();
-
-    pthread_mutex_lock(&access_profile_flush_signal_mutex);
-
-    prof_data.tid = get_this_tid();
-    prof_data.pid = getpid();
-
-    prof_data.pagesize = (size_t) sysconf(_SC_PAGESIZE);
-
     /* Use libpfm to fill the pe structs */
-    fd = 0;
+    fd      = 0;
+    n_profs = 0;
     while (fd != -1) {
-        profile_get_event(n_profs);
+        profile_get_event(n_profs, profs, event);
 
         /* Open the perf file descriptor */
         fd = syscall(__NR_perf_event_open, &profs[n_profs].pe, -1, n_profs, -1, 0);
@@ -370,6 +461,31 @@ internal void profile_init(void) {
             n_profs += 1;
         }
     }
+}
+
+internal void profile_init(void) {
+    doing_profiling = !!getenv("HMALLOC_PROFILE");
+
+    if (!doing_profiling)    { return; }
+
+    prof_data.blocks = hash_table_make(block_addr_t, profile_obj_entry_ptr, block_addr_hash);
+    LOG("(profile) created blocks hash table\n");
+    prof_data.obj_buff = array_make(profile_obj_entry_ptr);
+    LOG("(profile) created object buffer\n");
+    prof_data.fd = open("hmalloc.profile", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    ASSERT(prof_data.fd >= 0, "could not open profile output file");
+    LOG("(profile) opened profile output file\n");
+    write_header();
+
+    pthread_mutex_lock(&access_profile_flush_signal_mutex);
+
+    prof_data.tid = get_this_tid();
+    prof_data.pid = getpid();
+
+    prof_data.pagesize = (size_t) sysconf(_SC_PAGESIZE);
+
+    profile_init_events(w_profs, "MEM_INST_RETIRED:ALL_STORES");
+    profile_init_events(r_profs, "MEM_LOAD_UOPS_RETIRED.L3_MISS");
 
     start_profile_thread();
 
@@ -399,14 +515,17 @@ PROF_BLOCKS_LOCK(); {
 
     obj = imalloc(sizeof(*obj));
 
-    obj->addr        = block;
-    obj->size        = size;
-    obj->heap_handle = __meta->flags & HEAP_USER ? __meta->handle : NULL;
-    obj->tid         = b->tid;
-    obj->shared      = 0;
-    obj->m_ns        = gettime_ns();
-    obj->f_ns        = 0;
+    obj->addr          = block;
+    obj->size          = size;
+    obj->heap_handle   = __meta->flags & HEAP_USER ? __meta->handle : NULL;
+    obj->tid           = b->tid;
+    obj->shared        = 0;
+    obj->m_ns          = gettime_ns();
+    obj->f_ns          = 0;
+    obj->last_write_ns = 0;
+    obj->last_read_ns  = 0;
     memset(obj->write_buckets, 0, sizeof(u64) * N_BUCKETS);
+    memset(obj->read_buckets, 0, sizeof(u64) * N_BUCKETS);
 
     block_aligned_addr = block;
     while (block_aligned_addr < (&(b->c))->end) {
@@ -469,7 +588,7 @@ PROF_BLOCKS_LOCK(); {
     /* Write out all of the objects in the buffer. */
     array_traverse(prof_data.obj_buff, obj) {
         write_obj(*obj);
-        ifree(*obj);
+/*         ifree(*obj); */
     }
 } PROF_BLOCKS_UNLOCK();
 

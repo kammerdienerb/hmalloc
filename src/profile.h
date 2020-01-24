@@ -40,7 +40,10 @@ typedef struct {
     i32    shared;
     u64    m_ns;
     u64    f_ns;
+    u64    last_write_ns;
+    u64    last_read_ns;
     u64    write_buckets[N_BUCKETS];
+    u64    read_buckets[N_BUCKETS];
 } profile_obj_entry, *profile_obj_entry_ptr;
 
 #define malloc imalloc
@@ -78,6 +81,7 @@ struct __attribute__ ((__packed__)) sample {
     u32 tid;
     u64 time;
     u64 addr;
+    union perf_mem_data_src data_src;
 };
 
 typedef struct {
