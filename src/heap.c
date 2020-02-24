@@ -525,7 +525,17 @@ internal void * heap_alloc(heap_t *heap, u64 n_bytes) {
      */
     n_bytes = ALIGN(n_bytes, 8);
 
-    if (n_bytes > MAX_SMALL_CHUNK) {
+    if (n_bytes > MAX_SMALL_CHUNK
+    /*
+     * If we are doing object profiling, we will use an allocation
+     * strategy that gives each allocation that won't fit in an sblock
+     * slot it's own block.
+     * This allows us to map a read/write address back to it's object
+     * with a simple bit masking.
+     *
+     * See src/profile.c
+     */
+    ||  (doing_profiling && n_bytes > SBLOCK_MAX_ALLOC_SIZE)) {
         return heap_big_alloc(heap, n_bytes);
     }
 
@@ -539,8 +549,7 @@ internal void * heap_alloc(heap_t *heap, u64 n_bytes) {
      */
 #endif
 
-    /* @eden */
-    ASSERT(0, "shouldn't get here -- eden testing");
+    ASSERT(!doing_profiling, "shouldn't get here if we're doing object profiling");
 
     cblock = heap->cblocks_tail;
 
@@ -853,17 +862,6 @@ internal void user_heaps_init(void) {
         user_heaps = hash_table_make_e(heap_handle_t, heap_t, heap_handle_hash, heap_handle_equ);
     } USER_HEAPS_UNLOCK();
     LOG("initialized user heaps table\n");
-}
-
-internal char * istrdup(char *s) {
-    int   len;
-    char *out;
-
-    len = strlen(s);
-    out = imalloc(len + 1);
-    memcpy(out, s, len + 1);
-
-    return out;
 }
 
 internal heap_t * get_or_make_user_heap(char *handle) {

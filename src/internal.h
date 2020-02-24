@@ -115,4 +115,6 @@ internal u64 next_power_of_2(u64 x);
 
 #define DEFAULT_BLOCK_SIZE (MiB(4))
 
+internal char * istrdup(char *s);
+
 #endif

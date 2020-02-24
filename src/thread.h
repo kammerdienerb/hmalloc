@@ -35,10 +35,11 @@
 typedef u16 hm_tid_t;
 
 typedef struct {
-    heap_t          heap;
-    hm_tid_t        tid;
-    pthread_mutex_t mtx;
-    int             is_valid;
+    heap_t           heap;
+    hm_tid_t         tid;
+    pthread_mutex_t  mtx;
+    int              is_valid;
+    char            *cur_allocating_site;
 } thread_data_t;
 
 internal thread_data_t   thread_datas[HMALLOC_MAX_THREADS];

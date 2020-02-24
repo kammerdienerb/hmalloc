@@ -19,6 +19,8 @@ internal void perform_sanity_checks(void) {
 }
 
 internal void hmalloc_init(void) {
+    const char *layout;
+
     /*
      * Thread-unsafe check for performance.
      * Could give a false positive.
@@ -43,6 +45,27 @@ internal void hmalloc_init(void) {
             hmalloc_use_imalloc = 1;
 
             imalloc_init();
+
+            /*
+             * Figure out which layout strategy we should use for the
+             * hmalloc_site_* API.
+             */
+            hmalloc_site_layout = HMALLOC_SITE_LAYOUT_SITE;
+            layout              = getenv("HMALLOC_SITE_LAYOUT");
+            if (layout) {
+                if (strcmp(layout, "thread") == 0) {
+                    hmalloc_site_layout = HMALLOC_SITE_LAYOUT_THREAD;
+                    LOG("HMALLOC_SITE_LAYOUT = HMALLOC_SITE_LAYOUT_THREAD\n");
+                } else if (strcmp(layout, "site") == 0) {
+                    hmalloc_site_layout = HMALLOC_SITE_LAYOUT_SITE;
+                    LOG("HMALLOC_SITE_LAYOUT = HMALLOC_SITE_LAYOUT_SITE\n");
+                } else {
+                    LOG("invalid value '%s' for HMALLOC_SITE_LAYOUT\n", layout);
+                    ASSERT(0, "invalid HMALLOC_SITE_LAYOUT value");
+                }
+            } else {
+                LOG("missing value for HMALLOC_SITE_LAYOUT -- defaulting to HMALLOC_SITE_LAYOUT_THREAD\n");
+            }
 
             threads_init();
 

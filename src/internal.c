@@ -1,6 +1,8 @@
 #include "internal.h"
+#include "internal_malloc.h"
 
 #include <errno.h>
+#include <string.h>
 
 internal void hmalloc_putc(char c, void *fd) {
     write((int)(i64)fd, &c, 1);
@@ -56,3 +58,13 @@ internal u64 next_power_of_2(u64 x) {
     return x;
 }
 
+internal char * istrdup(char *s) {
+    int   len;
+    char *out;
+
+    len = strlen(s);
+    out = imalloc(len + 1);
+    memcpy(out, s, len + 1);
+
+    return out;
+}

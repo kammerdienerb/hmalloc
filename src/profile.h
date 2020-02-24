@@ -40,10 +40,11 @@ typedef struct {
     i32    shared;
     u64    m_ns;
     u64    f_ns;
-    u64    last_write_ns;
-    u64    last_read_ns;
     u64    write_buckets[N_BUCKETS];
+    u64    last_write_ns;
+    u64    l1_hit_w;
     u64    read_buckets[N_BUCKETS];
+    u64    last_read_ns;
 } profile_obj_entry, *profile_obj_entry_ptr;
 
 #define malloc imalloc
@@ -63,7 +64,7 @@ typedef struct {
     i32                                             tid;
     i32                                             pid;
     u64                                             pagesize;
-    u64                                             total;
+    u64                                             total_w, total_r;
     pthread_mutex_t                                 mtx;
     pthread_t                                       profile_id;
 } profile_data;
@@ -102,6 +103,7 @@ internal void profile_init(void);
 internal void profile_fini(void);
 internal void profile_add_block(void *block, u64 size);
 internal void profile_delete_block(void *block);
+internal void profile_set_site(void *addr, char *site);
 
 __attribute__((destructor))
 internal void profile_dump_remaining(void);

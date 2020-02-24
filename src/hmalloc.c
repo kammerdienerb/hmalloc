@@ -288,6 +288,11 @@ external void * hvalloc(heap_handle_t h, size_t n_bytes) {
     return addr;
 }
 
+external void * hpvalloc(heap_handle_t h, size_t n_bytes) {
+    ASSERT(0, "hpvalloc");
+    return NULL;
+}
+
 external void hfree(void *addr)    { hmalloc_free(addr); }
 
 external int hposix_memalign(heap_handle_t h, void **memptr, size_t alignment, size_t size) {
@@ -327,6 +332,261 @@ size_t hmalloc_size(void *addr) {
 
 size_t hmalloc_usable_size(void *addr) {
     return hmalloc_malloc_size(addr);
+}
+
+
+#define SET_PROFILE_SITE(addr, site)              \
+do {                                              \
+    block_header_t *block;                        \
+                                                  \
+    block = ADDR_PARENT_BLOCK((addr));            \
+                                                  \
+    if (doing_profiling                           \
+    &&  block->block_kind == BLOCK_KIND_CBLOCK) { \
+        profile_set_site(block, (site));          \
+    }                                             \
+} while (0)
+
+#undef SET_PROFILE_SITE
+
+#define SET_PROFILE_SITE(addr, site) ;
+
+void * hmalloc_site_malloc(char *site, size_t n_bytes) {
+    void *addr;
+
+    /*
+     * Have to make sure that we are initialized so that
+     * hmalloc_site_layout has a proper value.
+     */
+    hmalloc_init();
+
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_UNKNOWN) {
+        return NULL;
+    }
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_SITE) {
+        return hmalloc(site, n_bytes);
+    }
+
+    addr = hmalloc_malloc(n_bytes);
+
+    SET_PROFILE_SITE(addr, site);
+
+    return addr;
+}
+
+void * hmalloc_site_calloc(char *site, size_t count, size_t n_bytes) {
+    void *addr;
+
+    /*
+     * Have to make sure that we are initialized so that
+     * hmalloc_site_layout has a proper value.
+     */
+    hmalloc_init();
+
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_UNKNOWN) {
+        return NULL;
+    }
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_SITE) {
+        return hcalloc(site, count, n_bytes);
+    }
+
+    addr = hmalloc_calloc(count, n_bytes);
+
+    SET_PROFILE_SITE(addr, site);
+
+    return addr;
+}
+
+void * hmalloc_site_realloc(char *site, void *addr, size_t n_bytes) {
+    void *new_addr;
+
+    /*
+     * Have to make sure that we are initialized so that
+     * hmalloc_site_layout has a proper value.
+     */
+    hmalloc_init();
+
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_UNKNOWN) {
+        return NULL;
+    }
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_SITE) {
+        return hrealloc(site, addr, n_bytes);
+    }
+
+    new_addr = hmalloc_realloc(addr, n_bytes);
+
+    SET_PROFILE_SITE(new_addr, site);
+
+    return new_addr;
+}
+
+void * hmalloc_site_reallocf(char *site, void *addr, size_t n_bytes) {
+    void *new_addr;
+
+    /*
+     * Have to make sure that we are initialized so that
+     * hmalloc_site_layout has a proper value.
+     */
+    hmalloc_init();
+
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_UNKNOWN) {
+        return NULL;
+    }
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_SITE) {
+        return hreallocf(site, addr, n_bytes);
+    }
+
+    new_addr = hmalloc_reallocf(addr, n_bytes);
+
+    SET_PROFILE_SITE(new_addr, site);
+
+    return new_addr;
+}
+
+void * hmalloc_site_valloc(char *site, size_t n_bytes) {
+    void *addr;
+
+    /*
+     * Have to make sure that we are initialized so that
+     * hmalloc_site_layout has a proper value.
+     */
+    hmalloc_init();
+
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_UNKNOWN) {
+        return NULL;
+    }
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_SITE) {
+        return hvalloc(site, n_bytes);
+    }
+
+    addr = hmalloc_valloc(n_bytes);
+
+    SET_PROFILE_SITE(addr, site);
+
+    return addr;
+}
+
+void * hmalloc_site_pvalloc(char *site, size_t n_bytes) {
+    void *addr;
+
+    /*
+     * Have to make sure that we are initialized so that
+     * hmalloc_site_layout has a proper value.
+     */
+    hmalloc_init();
+
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_UNKNOWN) {
+        return NULL;
+    }
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_SITE) {
+        return hpvalloc(site, n_bytes);
+    }
+
+    ASSERT(0, "hpvalloc");
+    return NULL;
+    (void) addr;
+/*     addr = hmalloc_pvalloc(n_bytes); */
+
+/*     SET_PROFILE_SITE(addr, site); */
+
+/*     return addr; */
+}
+
+void hmalloc_site_free(void *addr) {
+    /*
+     * Have to make sure that we are initialized so that
+     * hmalloc_site_layout has a proper value.
+     */
+    hmalloc_init();
+
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_UNKNOWN) {
+        return;
+    }
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_SITE) {
+        hfree(addr);
+        return;
+    }
+
+    hmalloc_free(addr);
+}
+
+int hmalloc_site_posix_memalign(char *site, void **memptr, size_t alignment, size_t size) {
+    int err;
+
+    /*
+     * Have to make sure that we are initialized so that
+     * hmalloc_site_layout has a proper value.
+     */
+    hmalloc_init();
+
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_UNKNOWN) {
+        return EINVAL;
+    }
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_SITE) {
+        return hposix_memalign(site, memptr, alignment, size);
+    }
+
+    err = hmalloc_posix_memalign(memptr, alignment, size);
+
+    if (err == 0) {
+        SET_PROFILE_SITE((*memptr), site);
+    }
+
+    return err;
+}
+
+void * hmalloc_site_aligned_alloc(char *site, size_t alignment, size_t size) {
+    void *addr;
+
+    /*
+     * Have to make sure that we are initialized so that
+     * hmalloc_site_layout has a proper value.
+     */
+    hmalloc_init();
+
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_UNKNOWN) {
+        return NULL;
+    }
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_SITE) {
+        return haligned_alloc(site, alignment, size);
+    }
+
+    addr = hmalloc_aligned_alloc(alignment, size);
+
+    SET_PROFILE_SITE(addr, site);
+
+    return addr;
+}
+
+void * hmalloc_site_memalign(char *site, size_t alignment, size_t size) {
+    void *addr;
+
+    /*
+     * Have to make sure that we are initialized so that
+     * hmalloc_site_layout has a proper value.
+     */
+    hmalloc_init();
+
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_UNKNOWN) {
+        return NULL;
+    }
+    if (hmalloc_site_layout == HMALLOC_SITE_LAYOUT_SITE) {
+        return hmemalign(site, alignment, size);
+    }
+
+    addr = hmalloc_aligned_alloc(alignment, size);
+
+    SET_PROFILE_SITE(addr, site);
+
+    return addr;
+}
+
+size_t hmalloc_site_malloc_size(void *addr) {
+    return hmalloc_size(addr);
+}
+
+size_t hmalloc_site_malloc_usable_size(void *addr) {
+    return hmalloc_usable_size(addr);
 }
 
 

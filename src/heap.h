@@ -180,8 +180,4 @@ pthread_mutex_t user_heaps_lock = PTHREAD_MUTEX_INITIALIZER;
 internal void user_heaps_init(void);
 internal heap_t * get_or_make_user_heap(char *handle);
 
-/* @eden */
-#undef  MAX_SMALL_CHUNK
-#define MAX_SMALL_CHUNK (SBLOCK_MAX_ALLOC_SIZE)
-
 #endif

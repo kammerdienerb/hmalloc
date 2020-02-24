@@ -28,6 +28,18 @@ void * hmemalign(heap_handle_t h, size_t alignment, size_t size);
 size_t hmalloc_size(void *addr);
 size_t hmalloc_usable_size(void *addr);
 
+void * hmalloc_site_malloc(char *site, size_t n_bytes);
+void * hmalloc_site_calloc(char *site, size_t count, size_t n_bytes);
+void * hmalloc_site_realloc(char *site, void *addr, size_t n_bytes);
+void * hmalloc_site_reallocf(char *site, void *addr, size_t n_bytes);
+void * hmalloc_site_valloc(char *site, size_t n_bytes);
+void * hmalloc_site_pvalloc(char *site, size_t n_bytes);
+void   hmalloc_site_free(void *addr);
+int    hmalloc_site_posix_memalign(char *site, void **memptr, size_t alignment, size_t size);
+void * hmalloc_site_aligned_alloc(char *site, size_t alignment, size_t size);
+void * hmalloc_site_memalign(char *site, size_t alignment, size_t size);
+size_t hmalloc_site_malloc_size(void *addr);
+size_t hmalloc_site_malloc_usable_size(void *addr);
 
 void * malloc(size_t n_bytes);
 void * calloc(size_t count, size_t n_bytes);
