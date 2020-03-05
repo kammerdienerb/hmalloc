@@ -137,10 +137,6 @@ internal void heap_remove_sblock(heap_t *heap, sblock_header_t *sblock) {
 }
 
 internal void release_sblock(sblock_header_t *sblock) {
-    if (doing_profiling) {
-        profile_delete_block(sblock);
-    }
-
     release_pages_to_os((void*)sblock, ((sblock->end - ((void*)sblock)) >> system_info.log_2_page_size));
 }
 
@@ -755,6 +751,8 @@ internal void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignmen
 
     if (unlikely(n_bytes == 0))    { return NULL; }
 
+    if (n_bytes < 8)               { n_bytes = 8; }
+
     /*
      * All sblock slots *EXCEPT FOR THE FIRST ONE* are aligned on
      * SBLOCK_SLOT_SIZE boundaries.
@@ -788,6 +786,20 @@ internal void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignmen
      */
     if (alignment <= 8) {
         return heap_alloc(heap, n_bytes);
+    }
+
+    /*
+     * If we are doing profiling, we should fall back to the big
+     * allocation routine for these reasons:
+     *
+     * 1. We've already put the object in an sblock slot if it could
+     *    have gone there.
+     * 2. An object from heap_big_alloc() _will_ be aligned for any valid
+     *    alignment value.
+     * 3. The object needs to be profiled.. so yeah.
+     */
+    if (doing_profiling) {
+        return heap_big_alloc(heap, n_bytes);
     }
 
     /*

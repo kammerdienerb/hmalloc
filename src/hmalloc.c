@@ -335,21 +335,18 @@ size_t hmalloc_usable_size(void *addr) {
 }
 
 
-#define SET_PROFILE_SITE(addr, site)              \
-do {                                              \
-    block_header_t *block;                        \
-                                                  \
-    block = ADDR_PARENT_BLOCK((addr));            \
-                                                  \
-    if (doing_profiling                           \
-    &&  block->block_kind == BLOCK_KIND_CBLOCK) { \
-        profile_set_site(block, (site));          \
-    }                                             \
+#define SET_PROFILE_SITE(addr, site)                   \
+do {                                                   \
+    if (doing_profiling && (addr)) {                   \
+        block_header_t *_block;                        \
+                                                       \
+        _block = ADDR_PARENT_BLOCK((addr));            \
+                                                       \
+        if (_block->block_kind == BLOCK_KIND_CBLOCK) { \
+            profile_set_site(_block, (site));          \
+        }                                              \
+    }                                                  \
 } while (0)
-
-#undef SET_PROFILE_SITE
-
-#define SET_PROFILE_SITE(addr, site) ;
 
 void * hmalloc_site_malloc(char *site, size_t n_bytes) {
     void *addr;
@@ -612,3 +609,5 @@ external void * memalign(size_t alignment, size_t size) {
 
 external size_t malloc_size(void *addr)        { return hmalloc_malloc_size(addr); }
 external size_t malloc_usable_size(void *addr) { return hmalloc_malloc_size(addr); }
+
+#undef SET_PROFILE_SITE

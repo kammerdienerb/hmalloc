@@ -554,6 +554,7 @@ PROF_BLOCKS_LOCK(); {
 
     b     = block;
     m_obj = hash_table_get_val(prof_data.blocks, block);
+    ASSERT(m_obj, "object info not found for block");
     obj   = *m_obj;
 
     block_aligned_addr = block;
