@@ -13,6 +13,7 @@ typedef struct {
 array_t _array_make(int elem_size);
 array_t _array_make_with_cap(int elem_size, int initial_cap);
 void * _array_push(array_t *array, void *elem);
+void * _array_push_n(array_t *array, void *elems, int n);
 void * _array_next_elem(array_t *array);
 void _array_delete(array_t *array, int idx);
 void _array_zero_term(array_t *array);
@@ -35,6 +36,9 @@ void _array_grow_if_needed(array_t *array);
 
 #define array_push(array, elem) \
     (_array_push(&(array), &(elem)))
+
+#define array_push_n(array, elems, n) \
+    (_array_push_n(&(array), (elems), (n)))
 
 #define array_insert(array, idx, elem) \
     (_array_insert(&(array), idx, &(elem)))

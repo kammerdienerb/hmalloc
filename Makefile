@@ -16,7 +16,7 @@ CFG=$(CFG_REL_LOG)
 
 MAX_ERRS=-fmax-errors=3
 
-C_FLAGS=-shared -fPIC -lpthread -lm -Wall $(MAX_ERRS) -Werror -Wno-unused-function $(CFG) -ldl -lpfm
+C_FLAGS=-shared -fPIC -lpthread -lm -Wall $(MAX_ERRS) -Werror -Wno-unused-function -Wno-unused-value $(CFG) -ldl -lpfm
 
 # CC=gcc-9
 

@@ -21,24 +21,6 @@ internal profile_info w_profs[2048];
 internal profile_info r_profs[2048];
 internal int          n_profs;
 
-internal u32 get_cpu_freq(void) {
-    u32 eax, ebx, ecx, edx;
-
-    __get_cpuid(0, &eax, &ebx, &ecx, &edx);
-    ASSERT(eax >= 0x16, "CPUID level 16h not supported");
-
-    __get_cpuid(0x16, &eax, &ebx, &ecx, &edx);
-
-    return eax * 1000000; /* MHz to Hz */
-}
-
-internal u64 read_tsc(void) {
-    u32 lo, hi;
-
-    __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
-    return ( (u64)lo)|( ((u64)hi)<<32 );
-}
-
 internal u64 gettime_ns(void) {
     struct timespec t;
 
@@ -47,12 +29,31 @@ internal u64 gettime_ns(void) {
     return 1000000000ULL * (u64)t.tv_sec + (u64)t.tv_nsec;
 }
 
+#define PUTC_C_N (KiB(16))
+static char putc_c_buff[PUTC_C_N];
+static int  putc_c_size = 0;
+
+internal void profile_putc_flush(void) {
+    write(prof_data.fd, putc_c_buff, putc_c_size);
+    putc_c_size = 0;
+}
+
+internal void profile_putc(char c, void *context) {
+    (void)context;
+
+    putc_c_buff[putc_c_size++] = c;
+
+    if (putc_c_size == PUTC_C_N) {
+        profile_putc_flush();
+    }
+}
+
 internal void profile_printf(const char *fmt, ...) {
     va_list va;
 
     va_start(va, fmt);
 
-    FormatString(hmalloc_putc, (void*)(i64)prof_data.fd, fmt, va);
+    FormatString(profile_putc, NULL, fmt, va);
 
     va_end(va);
 }
@@ -61,7 +62,7 @@ internal void write_header(void) {
     int i;
     u64 lo, hi;
 
-    profile_printf("addr,size,user heap,allocating thread,shared,alloc timestamp,free timestamp");
+    profile_printf("size,user heap,allocating thread,shared,alloc timestamp,free timestamp");
 
     for (i = 0; i < N_BUCKETS; i += 1) {
         if (i == 0) { lo = 0;                        }
@@ -94,8 +95,7 @@ internal void write_header(void) {
 internal void write_obj(profile_obj_entry *obj) {
     int i;
 
-    profile_printf("0x%llx,%llu,'%s',%d,%d,%llu,%llu",
-                   obj->addr,
+    profile_printf("%llu,'%s',%d,%d,%llu,%llu",
                    obj->size,
                    obj->heap_handle ? obj->heap_handle : "<hmalloc thread heap>",
                    obj->tid,
@@ -136,86 +136,133 @@ internal void profile_get_w_accesses_for_cpu(int cpu, profile_info *profs) {
     u32                       pid;
     u32                       tid;
     u64                       tsc, tsc_diff;
-    union perf_mem_data_src   data_src;
     profile_obj_entry       **m_obj, *obj;
     int                       i;
+    prof_thread_objects      *thr;
 
-    PROF_BLOCKS_LOCK(); {
-        /* Get ready to read */
-        head     = profs[cpu].metadata->data_head;
-        tail     = profs[cpu].metadata->data_tail;
-        buf_size = prof_data.pagesize * max_sample_pages;
-        asm volatile("" ::: "memory"); /* Block after reading data_head, per perf docs */
+    /* Get ready to read */
+    head     = profs[cpu].metadata->data_head;
+    tail     = profs[cpu].metadata->data_tail;
+    buf_size = prof_data.pagesize * max_sample_pages;
+    asm volatile("" ::: "memory"); /* Block after reading data_head, per perf docs */
 
-        base  = (char *)profs[cpu].metadata + prof_data.pagesize;
-        begin = base + tail % buf_size;
-        end   = base + head % buf_size;
+    base  = (char *)profs[cpu].metadata + prof_data.pagesize;
+    begin = base + tail % buf_size;
+    end   = base + head % buf_size;
 
-        /* Read all of the samples */
-        while (begin < end) {
-            header = (struct perf_event_header *)begin;
-            if (header->size == 0) {
-                break;
-            } else if (header->type != PERF_RECORD_SAMPLE) {
-                goto inc;
+    /* Read all of the samples */
+    while (begin < end) {
+        header = (struct perf_event_header *)begin;
+        if (header->size == 0) {
+            break;
+        } else if (header->type != PERF_RECORD_SAMPLE) {
+            goto inc;
+        }
+
+        sample = (struct sample *) (begin + sizeof(struct perf_event_header));
+        pid    = sample->pid;
+
+        if (pid != prof_data.pid)    { goto inc; }
+
+        addr  = (void *) (sample->addr);
+        block = ADDR_PARENT_BLOCK(addr);
+        tid   = OS_TID_TO_HM_TID(sample->tid);
+
+        /*
+         * As an optimization, let's do the first lookup in the thread
+         * that the sample occurred in.
+         * The chances are high that many accesses to data will occur in
+         * the thread that allocated it.
+         *
+         * Of course, this is not always the case, but it doesn't hurt to
+         * check the sample thread first.
+         */
+        PROF_THREAD_LOCK(tid); {
+            thr = &prof_data.thread_objects[tid];
+
+            if (thr->is_initialized) {
+                if ((m_obj = hash_table_get_val(thr->blocks, block))) {
+                    /*
+                     * !!! NOTE:
+                     * We are intentionally not unlocking here.
+                     * We need the thread to be locked and we don't
+                     * want the object to be removed and freed in the
+                     * time it takes us to unlock here and then lock
+                     * again later.
+                     */
+/*                     PROF_THREAD_UNLOCK(thr->tid); */
+                    goto found;
+                }
+            }
+        } PROF_THREAD_UNLOCK(tid);
+
+        /* Look through all the threads to find the object. */
+        LOCKING_THREAD_TRAVERSE(thr) {
+            if (!thr->is_initialized || thr->tid == tid) {
+                /* Invalid or already checked. */
+                continue;
             }
 
-            sample = (struct sample *) (begin + sizeof(struct perf_event_header));
-            pid    = sample->pid;
-
-            if (pid != prof_data.pid)    { goto inc; }
-
-            data_src = sample->data_src;
-            addr     = (void *) (sample->addr);
-            block    = ADDR_PARENT_BLOCK(addr);
-
-            if (!(m_obj = hash_table_get_val(prof_data.blocks, block))) {
-                goto inc;
-            }
-
-            obj = *m_obj;
-
-            tsc = sample->time;
-
-            if (tsc < obj->m_ns) {
+            if ((m_obj = hash_table_get_val(thr->blocks, block))) {
                 /*
-                 * This most likely indicates that we've found a sample for
-                 * an object that has been freed in the time between the actual
-                 * event and now. Ignore it.
+                 * !!! NOTE:
+                 * We are intentionally not unlocking here.
+                 * We need the thread to be locked and we don't
+                 * want the object to be removed and freed in the
+                 * time it takes us to unlock here and then lock
+                 * again later.
                  */
-                if (!prof_data.should_stop) {
-                    goto inc;
-                }
-            }
-
-            if (data_src.mem_lvl & (PERF_MEM_LVL_HIT)) {
-                obj->l1_hit_w += 1;
-            }
-
-            tid                 = OS_TID_TO_HM_TID(sample->tid);
-            obj->shared        |= (tid != obj->tid);
-
-            tsc_diff           = tsc - obj->m_ns;
-            obj->last_write_ns = tsc;
-
-            for (i = 0; i < N_BUCKETS; i += 1) {
-                if (tsc_diff <= bucket_max_values[i]) {
-                    obj->write_buckets[i] += 1;
-                    break;
-                }
-            }
-
-            prof_data.total_w++;
-
-inc:
-            /* Increment begin by the size of the sample */
-            if (((char *)header + header->size) == base + buf_size) {
-                begin = base;
-            } else {
-                begin = begin + header->size;
+/*                 PROF_THREAD_UNLOCK(thr->tid); */
+                goto found;
             }
         }
-    } PROF_BLOCKS_UNLOCK();
+
+        /* If we're here, we haven't found the object. */
+        goto inc;
+
+found:
+        obj = *m_obj;
+        tsc = sample->time;
+
+        if (tsc < obj->m_ns) {
+            /*
+             * This most likely indicates that we've found a sample for
+             * an object that has been freed in the time between the actual
+             * event and now. Ignore it.
+             */
+            if (!prof_data.should_stop) {
+                PROF_THREAD_UNLOCK(thr->tid);
+                goto inc;
+            }
+        }
+
+        obj->shared |= (tid != obj->tid);
+
+        tsc_diff = tsc - obj->m_ns;
+
+        for (i = 0; i < N_BUCKETS; i += 1) {
+            if (tsc_diff <= bucket_max_values[i]) {
+                obj->write_buckets[i] += 1;
+                break;
+            }
+        }
+
+        obj->last_write_ns = tsc;
+
+
+        /* Finally, now that we've processed the object, unlock. */
+        PROF_THREAD_UNLOCK(thr->tid);
+
+        prof_data.total_w++;
+
+inc:
+        /* Increment begin by the size of the sample */
+        if (((char *)header + header->size) == base + buf_size) {
+            begin = base;
+        } else {
+            begin = begin + header->size;
+        }
+    }
 
     /* Let perf know that we've read this far */
     profs[cpu].metadata->data_tail = head;
@@ -234,80 +281,131 @@ internal void profile_get_r_accesses_for_cpu(int cpu, profile_info *profs) {
     u64                       tsc, tsc_diff;
     profile_obj_entry       **m_obj, *obj;
     int                       i;
+    prof_thread_objects      *thr;
 
-    PROF_BLOCKS_LOCK(); {
-        /* Get ready to read */
-        head     = profs[cpu].metadata->data_head;
-        tail     = profs[cpu].metadata->data_tail;
-        buf_size = prof_data.pagesize * max_sample_pages;
-        asm volatile("" ::: "memory"); /* Block after reading data_head, per perf docs */
+    /* Get ready to read */
+    head     = profs[cpu].metadata->data_head;
+    tail     = profs[cpu].metadata->data_tail;
+    buf_size = prof_data.pagesize * max_sample_pages;
+    asm volatile("" ::: "memory"); /* Block after reading data_head, per perf docs */
 
-        base  = (char *)profs[cpu].metadata + prof_data.pagesize;
-        begin = base + tail % buf_size;
-        end   = base + head % buf_size;
+    base  = (char *)profs[cpu].metadata + prof_data.pagesize;
+    begin = base + tail % buf_size;
+    end   = base + head % buf_size;
 
-        /* Read all of the samples */
-        while (begin < end) {
-            header = (struct perf_event_header *)begin;
-            if (header->size == 0) {
-                break;
-            } else if (header->type != PERF_RECORD_SAMPLE) {
-                goto inc;
+    /* Read all of the samples */
+    while (begin < end) {
+        header = (struct perf_event_header *)begin;
+        if (header->size == 0) {
+            break;
+        } else if (header->type != PERF_RECORD_SAMPLE) {
+            goto inc;
+        }
+
+        sample = (struct sample *) (begin + sizeof(struct perf_event_header));
+        pid    = sample->pid;
+
+        if (pid != prof_data.pid)    { goto inc; }
+
+        addr  = (void *) (sample->addr);
+        block = ADDR_PARENT_BLOCK(addr);
+        tid   = OS_TID_TO_HM_TID(sample->tid);
+
+        /*
+         * As an optimization, let's do the first lookup in the thread
+         * that the sample occurred in.
+         * The chances are high that many accesses to data will occur in
+         * the thread that allocated it.
+         *
+         * Of course, this is not always the case, but it doesn't hurt to
+         * check the sample thread first.
+         */
+        PROF_THREAD_LOCK(tid); {
+            thr = &prof_data.thread_objects[tid];
+
+            if (thr->is_initialized) {
+                if ((m_obj = hash_table_get_val(thr->blocks, block))) {
+                    /*
+                     * !!! NOTE:
+                     * We are intentionally not unlocking here.
+                     * We need the thread to be locked and we don't
+                     * want the object to be removed and freed in the
+                     * time it takes us to unlock here and then lock
+                     * again later.
+                     */
+/*                     PROF_THREAD_UNLOCK(thr->tid); */
+                    goto found;
+                }
+            }
+        } PROF_THREAD_UNLOCK(tid);
+
+        /* Look through all the threads to find the object. */
+        LOCKING_THREAD_TRAVERSE(thr) {
+            if (!thr->is_initialized || thr->tid == tid) {
+                /* Invalid or already checked. */
+                continue;
             }
 
-            sample = (struct sample *) (begin + sizeof(struct perf_event_header));
-            pid    = sample->pid;
-
-            if (pid != prof_data.pid)    { goto inc; }
-
-            addr  = (void *) (sample->addr);
-            block = ADDR_PARENT_BLOCK(addr);
-
-            if (!(m_obj = hash_table_get_val(prof_data.blocks, block))) {
-                goto inc;
-            }
-
-            obj = *m_obj;
-
-            tsc = sample->time;
-
-            if (tsc < obj->m_ns) {
+            if ((m_obj = hash_table_get_val(thr->blocks, block))) {
                 /*
-                 * This most likely indicates that we've found a sample for
-                 * an object that has been freed in the time between the actual
-                 * event and now. Ignore it.
+                 * !!! NOTE:
+                 * We are intentionally not unlocking here.
+                 * We need the thread to be locked and we don't
+                 * want the object to be removed and freed in the
+                 * time it takes us to unlock here and then lock
+                 * again later.
                  */
-                if (!prof_data.should_stop) {
-                    goto inc;
-                }
-            }
-
-            tid          = OS_TID_TO_HM_TID(sample->tid);
-            obj->shared |= (tid != obj->tid);
-
-            tsc_diff = tsc - obj->m_ns;
-
-            for (i = 0; i < N_BUCKETS; i += 1) {
-                if (tsc_diff <= bucket_max_values[i]) {
-                    obj->read_buckets[i] += 1;
-                    break;
-                }
-            }
-
-            obj->last_read_ns = tsc;
-
-            prof_data.total_r++;
-
-inc:
-            /* Increment begin by the size of the sample */
-            if (((char *)header + header->size) == base + buf_size) {
-                begin = base;
-            } else {
-                begin = begin + header->size;
+/*                 PROF_THREAD_UNLOCK(thr->tid); */
+                goto found;
             }
         }
 
-    } PROF_BLOCKS_UNLOCK();
+        /* If we're here, we haven't found the object. */
+        goto inc;
+
+found:
+        obj = *m_obj;
+        tsc = sample->time;
+
+        if (tsc < obj->m_ns) {
+            /*
+             * This most likely indicates that we've found a sample for
+             * an object that has been freed in the time between the actual
+             * event and now. Ignore it.
+             */
+            if (!prof_data.should_stop) {
+                PROF_THREAD_UNLOCK(thr->tid);
+                goto inc;
+            }
+        }
+
+        obj->shared |= (tid != obj->tid);
+
+        tsc_diff = tsc - obj->m_ns;
+
+        for (i = 0; i < N_BUCKETS; i += 1) {
+            if (tsc_diff <= bucket_max_values[i]) {
+                obj->read_buckets[i] += 1;
+                break;
+            }
+        }
+
+        obj->last_read_ns = tsc;
+
+
+        /* Finally, now that we've processed the object, unlock. */
+        PROF_THREAD_UNLOCK(thr->tid);
+
+        prof_data.total_r++;
+
+inc:
+        /* Increment begin by the size of the sample */
+        if (((char *)header + header->size) == base + buf_size) {
+            begin = base;
+        } else {
+            begin = begin + header->size;
+        }
+    }
 
     /* Let perf know that we've read this far */
     profs[cpu].metadata->data_tail = head;
@@ -323,15 +421,35 @@ internal void profile_get_accesses(void) {
         profile_get_w_accesses_for_cpu(i, w_profs);
     }
 
-    /* Write out all of the objects in the buffer. */
-    PROF_BLOCKS_LOCK(); {
+    /*
+     * We have a choice here.
+     * We can either spend the time each profiling interval to
+     * write objects and clear them from the buffer as we go
+     * (thus using much less memory), OR, we can save all objects
+     * into the buffer until the end and write them all at once.
+     * The latter strategy tends to be faster, but comes at the
+     * memory cost of holding onto all object records for the
+     * duration of the run.
+     *
+     * To use the more memory friendly strategy, uncomment the
+     * define below.
+     */
+
+    (void)m_obj;
+
+/* #define USE_LESS_MEM */
+
+#ifdef USE_LESS_MEM
+    OBJ_BUFF_LOCK(); {
+        /* Write out all of the objects in the buffer. */
         array_traverse(prof_data.obj_buff, m_obj) {
             write_obj(*m_obj);
             ifree(*m_obj);
         }
-    } PROF_BLOCKS_UNLOCK();
 
-    array_clear(prof_data.obj_buff);
+        array_clear(prof_data.obj_buff);
+    } OBJ_BUFF_UNLOCK();
+#endif
 }
 
 void* profile_fn(void *arg) {
@@ -471,14 +589,14 @@ internal void profile_init(void) {
 
     if (!doing_profiling)    { return; }
 
-    prof_data.blocks = hash_table_make(block_addr_t, profile_obj_entry_ptr, block_addr_hash);
-    LOG("(profile) created blocks hash table\n");
-    prof_data.obj_buff = array_make(profile_obj_entry_ptr);
-    LOG("(profile) created object buffer\n");
     prof_data.fd = open("hmalloc.profile", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     ASSERT(prof_data.fd >= 0, "could not open profile output file");
     LOG("(profile) opened profile output file\n");
     write_header();
+
+    pthread_mutex_init(&prof_data.obj_buff_mtx, NULL);
+    prof_data.obj_buff = array_make(profile_obj_entry_ptr);
+    LOG("(profile) created object buffer\n");
 
     pthread_mutex_lock(&access_profile_flush_signal_mutex);
 
@@ -501,11 +619,23 @@ internal void profile_init(void) {
     hmalloc_use_imalloc = 0;
 }
 
+internal void profile_thr_init(prof_thread_objects *thr, u16 tid) {
+    ASSERT(!thr->is_initialized, "profile thread data is already initialized!");
+
+    thr->blocks = hash_table_make(block_addr_t, profile_obj_entry_ptr, block_addr_hash);
+    LOG("(profile) created blocks hash table for thread %u\n", tid);
+
+    thr->tid            = tid;
+    thr->is_initialized = 1;
+}
+
 internal void profile_add_block(void *block, u64 size) {
-    heap__meta_t      *__meta;
-    block_header_t    *b;
-    void              *block_aligned_addr;
-    profile_obj_entry *obj;
+    heap__meta_t        *__meta;
+    block_header_t      *b;
+    void                *block_aligned_addr;
+    u16                  tid;
+    profile_obj_entry   *obj;
+    prof_thread_objects *thr;
 
     ASSERT(doing_profiling, "can't add block when not profiling");
 
@@ -515,81 +645,108 @@ internal void profile_add_block(void *block, u64 size) {
 
     __meta = &((block_header_t*)block)->heap__meta;
     b      = block;
-
-PROF_BLOCKS_LOCK(); {
-
-    prof_data.total_allocated += 1;
+    tid    = b->tid;
 
     obj = imalloc(sizeof(*obj));
 
     memset(obj, 0, sizeof(*obj));
 
-    obj->addr          = block;
-    obj->size          = size;
-    obj->heap_handle   = __meta->flags & HEAP_USER ? __meta->handle : NULL;
-    obj->tid           = b->tid;
-    obj->m_ns          = gettime_ns();
+    obj->addr        = block;
+    obj->size        = size;
+    obj->heap_handle = __meta->flags & HEAP_USER ? __meta->handle : NULL;
+    obj->tid         = b->tid;
+    obj->m_ns        = gettime_ns();
+
+PROF_THREAD_LOCK(tid); {
+    thr = &prof_data.thread_objects[tid];
+
+    if (!thr->is_initialized) {
+        profile_thr_init(thr, tid);
+    }
 
     block_aligned_addr = block;
     while (block_aligned_addr < (&(b->c))->end) {
-        hash_table_insert(prof_data.blocks, block_aligned_addr, obj);
+        hash_table_insert(thr->blocks, block_aligned_addr, obj);
         block_aligned_addr += DEFAULT_BLOCK_SIZE;
     }
 
-} PROF_BLOCKS_UNLOCK();
+} PROF_THREAD_UNLOCK(tid);
 }
 
 internal void profile_delete_block(void *block) {
-    block_header_t    *b;
-    void              *block_aligned_addr;
-    profile_obj_entry **m_obj, *obj;
+    block_header_t      *b;
+    void                *block_aligned_addr;
+    profile_obj_entry  **m_obj, *obj;
+    u16                  tid;
+    prof_thread_objects *thr;
 
-    ASSERT(doing_profiling, "can't add block when not profiling");
+    ASSERT(doing_profiling, "can't delete block when not profiling");
 
     if (!prof_data.thread_started) {
         return;
     }
 
-PROF_BLOCKS_LOCK(); {
+    b   = block;
+    tid = b->tid;
 
-    b     = block;
-    m_obj = hash_table_get_val(prof_data.blocks, block);
+PROF_THREAD_LOCK(tid); {
+    thr = &prof_data.thread_objects[tid];
+
+    ASSERT(thr->is_initialized,
+           "attempting to delete a block from a profile thread data"
+           "that hasn't been created yet.");
+
+    m_obj = hash_table_get_val(thr->blocks, block);
     ASSERT(m_obj, "object info not found for block");
     obj   = *m_obj;
 
     block_aligned_addr = block;
     while (block_aligned_addr < (&(b->c))->end) {
-        hash_table_delete(prof_data.blocks, block_aligned_addr);
+        hash_table_delete(thr->blocks, block_aligned_addr);
         block_aligned_addr += DEFAULT_BLOCK_SIZE;
     }
 
     if (obj) {
         obj->f_ns = gettime_ns();
-        array_push(prof_data.obj_buff, obj);
+        OBJ_BUFF_LOCK(); {
+            array_push(prof_data.obj_buff, obj);
+        } OBJ_BUFF_UNLOCK();
     }
-} PROF_BLOCKS_UNLOCK();
+} PROF_THREAD_UNLOCK(tid);
 }
 
 internal void profile_set_site(void *addr, char *site) {
-    void               *block_addr;
-    block_header_t     *block;
-    profile_obj_entry **m_obj, *obj;
+    void                *block_addr;
+    block_header_t      *block;
+    profile_obj_entry  **m_obj, *obj;
+    u16                  tid;
+    prof_thread_objects *thr;
 
     block_addr = ADDR_PARENT_BLOCK(addr);
     block      = block_addr;
+    tid        = block->tid;
 
-PROF_BLOCKS_LOCK(); {
-    m_obj = hash_table_get_val(prof_data.blocks, block);
+PROF_THREAD_LOCK(tid); {
+    thr = &prof_data.thread_objects[tid];
+
+    ASSERT(thr->is_initialized,
+           "attempting to set site for a block from a profile thread data"
+           "that hasn't been created yet.");
+
+    m_obj = hash_table_get_val(thr->blocks, block);
+} PROF_THREAD_UNLOCK(tid);
+
     ASSERT(m_obj, "object info not found for block");
     obj = *m_obj;
 
     obj->heap_handle = istrdup(site);
-} PROF_BLOCKS_UNLOCK();
 }
 
 internal void profile_fini(void) {
-    void               *block;
-    profile_obj_entry **obj;
+    void                *block;
+    profile_obj_entry  **obj;
+    prof_thread_objects *thr;
+    u64                  n_objects;
 
     if (!prof_data.thread_started) {
         return;
@@ -598,21 +755,34 @@ internal void profile_fini(void) {
     prof_data.should_stop = 1;
     stop_profile_thread();
 
-PROF_BLOCKS_LOCK(); {
+    OBJ_BUFF_LOCK(); {
+        LOCKING_THREAD_TRAVERSE(thr) {
+            if (!thr->is_initialized) {
+                continue;
+            }
 
-    hash_table_traverse(prof_data.blocks, block, obj) {
-        (void)block;
-        (*obj)->f_ns = gettime_ns();
-        array_push(prof_data.obj_buff, *obj);
-    }
+            hash_table_traverse(thr->blocks, block, obj) {
+                (void)block;
+                (*obj)->f_ns = gettime_ns();
+                array_push(prof_data.obj_buff, *obj);
+            }
+        }
 
-    /* Write out all of the objects in the buffer. */
-    array_traverse(prof_data.obj_buff, obj) {
-        write_obj(*obj);
-/*         ifree(*obj); */
-    }
-} PROF_BLOCKS_UNLOCK();
+        n_objects = array_len(prof_data.obj_buff);
 
-    LOG("(profile) %llu total write samples\n", prof_data.total_w);
+        /* Write out all of the objects in the buffer. */
+        array_traverse(prof_data.obj_buff, obj) {
+            write_obj(*obj);
+            /*
+             * I don't care about freeing the memory for the
+             * objects. We're going away anyways.
+             */
+        }
+    } OBJ_BUFF_UNLOCK();
+
+    profile_putc_flush();
+
+    LOG("(profile) %llu objects\n", n_objects);
     LOG("(profile) %llu total read samples\n", prof_data.total_r);
+    LOG("(profile) %llu total write samples\n", prof_data.total_w);
 }

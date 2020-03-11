@@ -2,6 +2,7 @@
 #define __PROFILE_H__
 
 #include "internal.h"
+#include "thread.h"
 #include "hash_table.h"
 #include "array.h"
 
@@ -54,28 +55,50 @@ use_hash_table(block_addr_t, profile_obj_entry_ptr);
 #undef free
 
 typedef struct {
-    i32                                             thread_started;
-    i32                                             should_stop;
-    u32                                             nom_freq;
     hash_table(block_addr_t, profile_obj_entry_ptr) blocks;
-    array_t                                         obj_buff;
-    i32                                             total_allocated;
-    int                                             fd;
-    i32                                             tid;
-    i32                                             pid;
-    u64                                             pagesize;
-    u64                                             total_w, total_r;
-    pthread_mutex_t                                 mtx;
-    pthread_t                                       profile_id;
+    int                                             is_initialized;
+    u16                                             tid;
+} prof_thread_objects;
+
+typedef struct {
+    i32                 thread_started;
+    i32                 should_stop;
+    u32                 nom_freq;
+    prof_thread_objects thread_objects[HMALLOC_MAX_THREADS];
+    array_t             obj_buff;
+    int                 fd;
+    i32                 tid;
+    i32                 pid;
+    u64                 pagesize;
+    u64                 total_w, total_r;
+    pthread_mutex_t     mtx, obj_buff_mtx;
+    pthread_t           profile_id;
 } profile_data;
 
 internal profile_data prof_data;
 
+pthread_mutex_t prof_thread_mutices[HMALLOC_MAX_THREADS]
+    = { [0 ... (HMALLOC_MAX_THREADS - 1)] = PTHREAD_MUTEX_INITIALIZER };
+
 pthread_mutex_t access_profile_flush_mutex        = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t access_profile_flush_signal_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t profile_blocks_mutex              = PTHREAD_MUTEX_INITIALIZER;
-#define PROF_BLOCKS_LOCK()   HMALLOC_MTX_LOCKER(&profile_blocks_mutex)
-#define PROF_BLOCKS_UNLOCK() HMALLOC_MTX_UNLOCKER(&profile_blocks_mutex)
+#define PROF_THREAD_LOCK(tid)   HMALLOC_MTX_LOCKER(&prof_thread_mutices[(tid)])
+#define PROF_THREAD_UNLOCK(tid) HMALLOC_MTX_UNLOCKER(&prof_thread_mutices[(tid)])
+#define OBJ_BUFF_LOCK()         HMALLOC_MTX_LOCKER(&prof_data.obj_buff_mtx)
+#define OBJ_BUFF_UNLOCK()       HMALLOC_MTX_UNLOCKER(&prof_data.obj_buff_mtx)
+
+/*
+ * If you use 'break' in one of these loops without unlocking first,
+ * you will be sad.
+ */
+#define LOCKING_THREAD_TRAVERSE(thr_ptr)                            \
+    for (int _thr_it = 0;                                           \
+        (_thr_it < HMALLOC_MAX_THREADS)                             \
+            && ((thr_ptr = prof_data.thread_objects + _thr_it),     \
+                (pthread_mutex_lock(prof_thread_mutices + _thr_it)), \
+                1);                                                 \
+         pthread_mutex_unlock(prof_thread_mutices + _thr_it),       \
+         _thr_it += 1)
 
 struct __attribute__ ((__packed__)) sample {
     u32 pid;
@@ -104,8 +127,5 @@ internal void profile_fini(void);
 internal void profile_add_block(void *block, u64 size);
 internal void profile_delete_block(void *block);
 internal void profile_set_site(void *addr, char *site);
-
-__attribute__((destructor))
-internal void profile_dump_remaining(void);
 
 #endif
