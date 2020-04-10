@@ -1,0 +1,118 @@
+:# style.slide
+
+:resolution 2880 1800
+
+:################################################################## FONTS
+:begin F_PLAYFAIR
+:    font             fonts/PlayfairDisplay-Regular.otf
+:    font-bold        fonts/PlayfairDisplay-Bold.otf
+:    font-italic      fonts/PlayfairDisplay-Italic.otf
+:    font-bold-italic fonts/PlayfairDisplay-BoldItalic.otf
+:end
+    
+:begin F_CARDO
+:    font             fonts/Cardo-Regular.ttf
+:    font-bold        fonts/Cardo-Bold.ttf
+:    font-italic      fonts/Cardo-Italic.ttf
+:    font-bold-italic fonts/Cardo-Italic.ttf
+:end
+
+:use F_PLAYFAIR
+
+:################################################################# COLORS
+:bgx 3a506b
+
+:begin DARK_BLUE
+:    fgx 1c2541
+:end
+
+:begin BLUE
+:    fgx 3a506b
+:end
+
+:begin LIGHT_BLUE
+:    fgx 5bc0be
+:end
+
+:begin GREEN
+:    fgx 80bc82
+:end
+
+:begin WHITE
+:    fgx FFFFFF
+:end
+
+:################################################################## STYLE
+:begin NEXT_SLIDE
+:    vfill
+:    point
+:end
+
+:begin TITLE
+:    no-underline
+:    no-bold
+:    no-italic
+:    margin 0.05
+:    cjust
+:    use WHITE
+:    size 64
+:end
+
+:begin HEADER
+:    no-underline
+:    no-bold
+:    no-italic
+:    margin 0.05
+:    ljust
+:    vspace 0.05
+:    use WHITE
+:    size 48
+:end
+
+:begin BODY
+:    use F_PLAYFAIR
+:    no-underline
+:    no-bold
+:    no-italic
+:    margin 0.1
+:    ljust
+:    use WHITE
+:    size 24
+:end
+
+:begin BULLET1_TEXT
+:    use BODY
+:    ljust
+:    size 24
+:end
+
+:begin BULLET1
+:    use BULLET1_TEXT
+:    bullet 1
+:end
+
+:begin BULLET2_TEXT
+:    use BODY
+:    ljust
+:    size 20
+:end
+
+:begin BULLET2
+:    use BULLET2_TEXT
+:    bullet 2
+:end
+
+:begin BULLET3_TEXT
+:    use BODY
+:    ljust
+:    size 16
+:end
+
+:begin BULLET3
+:    use BULLET3_TEXT
+:    bullet 3
+:end
+
+:begin MATH
+:    use F_CARDO
+:end

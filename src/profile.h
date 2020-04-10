@@ -4,6 +4,7 @@
 #include "internal.h"
 #include "thread.h"
 #include "hash_table.h"
+#include "tree.h"
 #include "array.h"
 
 #include <pthread.h>
@@ -48,8 +49,10 @@ typedef struct {
     u64    last_read_ns;
 } profile_obj_entry, *profile_obj_entry_ptr;
 
+
 #define malloc imalloc
 #define free   ifree
+use_tree(u64, u32);
 use_hash_table(block_addr_t, profile_obj_entry_ptr);
 #undef malloc
 #undef free
@@ -67,6 +70,7 @@ typedef struct {
     prof_thread_objects thread_objects[HMALLOC_MAX_THREADS];
     array_t             obj_buff;
     int                 fd;
+    int                 phase_fd;
     i32                 tid;
     i32                 pid;
     u64                 pagesize;
@@ -76,6 +80,8 @@ typedef struct {
 } profile_data;
 
 internal profile_data prof_data;
+
+internal tree(u64, u32) phase_data;
 
 pthread_mutex_t prof_thread_mutices[HMALLOC_MAX_THREADS]
     = { [0 ... (HMALLOC_MAX_THREADS - 1)] = PTHREAD_MUTEX_INITIALIZER };

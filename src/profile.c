@@ -19,6 +19,7 @@ internal i32          max_sample_pages = 128;
 internal float        profile_rate     = 0.5;
 internal profile_info w_profs[2048];
 internal profile_info r_profs[2048];
+internal profile_info p_profs[2048];
 internal int          n_profs;
 
 internal u64 gettime_ns(void) {
@@ -125,6 +126,79 @@ internal i32 profile_should_stop(void) {
     }
     return 1;
 }
+
+internal void phase_putc(char c, void *context) {
+    write(prof_data.phase_fd, &c, 1);
+}
+
+internal void phase_printf(const char *fmt, ...) {
+    va_list va;
+
+    va_start(va, fmt);
+
+    FormatString(phase_putc, NULL, fmt, va);
+
+    va_end(va);
+}
+
+internal void profile_get_p_samples_for_cpu(int cpu, profile_info *profs) {
+    uint64_t                  head, tail, buf_size;
+    char                     *base, *begin, *end;
+    struct sample            *sample;
+    struct perf_event_header *header;
+    u32                       pid;
+    u64                       tsc;
+    tree_it(u64, u32)         it;
+
+    /* Get ready to read */
+    head     = profs[cpu].metadata->data_head;
+    tail     = profs[cpu].metadata->data_tail;
+    buf_size = prof_data.pagesize * max_sample_pages;
+    asm volatile("" ::: "memory"); /* Block after reading data_head, per perf docs */
+
+    base  = (char *)profs[cpu].metadata + prof_data.pagesize;
+    begin = base + tail % buf_size;
+    end   = base + head % buf_size;
+
+    /* Read all of the samples */
+    while (begin < end) {
+        header = (struct perf_event_header *)begin;
+        if (header->size == 0) {
+            break;
+        } else if (header->type != PERF_RECORD_SAMPLE) {
+            goto inc;
+        }
+
+        sample = (struct sample *) (begin + sizeof(struct perf_event_header));
+        pid    = sample->pid;
+
+        if (pid != prof_data.pid)    { goto inc; }
+
+        tsc = sample->time;
+
+        tsc = 1000000 * (tsc / 1000000);
+
+        it = tree_lookup(phase_data, tsc);
+        if (tree_it_good(it)) {
+            tree_it_val(it) += 1;
+        } else {
+            tree_insert(phase_data, tsc, 1);
+        }
+
+inc:
+        /* Increment begin by the size of the sample */
+        if (((char *)header + header->size) == base + buf_size) {
+            begin = base;
+        } else {
+            begin = begin + header->size;
+        }
+    }
+
+    /* Let perf know that we've read this far */
+    profs[cpu].metadata->data_tail = head;
+    __sync_synchronize();
+}
+
 
 internal void profile_get_w_accesses_for_cpu(int cpu, profile_info *profs) {
     uint64_t                  head, tail, buf_size;
@@ -419,6 +493,7 @@ internal void profile_get_accesses(void) {
     for (i = 0; i < n_profs; i += 1) {
         profile_get_r_accesses_for_cpu(i, r_profs);
         profile_get_w_accesses_for_cpu(i, w_profs);
+        profile_get_p_samples_for_cpu(i, p_profs);
     }
 
     /*
@@ -528,6 +603,8 @@ internal void stop_profile_thread() {
         close(w_profs[i].fd);
         ioctl(r_profs[i].fd, PERF_EVENT_IOC_DISABLE, 0);
         close(r_profs[i].fd);
+        ioctl(p_profs[i].fd, PERF_EVENT_IOC_DISABLE, 0);
+        close(p_profs[i].fd);
     }
 
     /* Stop the timers and join the threads */
@@ -594,6 +671,12 @@ internal void profile_init(void) {
     LOG("(profile) opened profile output file\n");
     write_header();
 
+    prof_data.phase_fd = open("hmalloc.phase_profile", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    ASSERT(prof_data.phase_fd >= 0, "could not open phase profile output file");
+    LOG("(profile) opened phase profile output file\n");
+
+    phase_data = tree_make(u64, u32);
+
     pthread_mutex_init(&prof_data.obj_buff_mtx, NULL);
     prof_data.obj_buff = array_make(profile_obj_entry_ptr);
     LOG("(profile) created object buffer\n");
@@ -611,6 +694,8 @@ internal void profile_init(void) {
     profile_init_events(w_profs, "MEM_INST_RETIRED:ALL_STORES");
     profile_init_events(r_profs, "MEM_LOAD_UOPS_RETIRED.L3_MISS");
 /*     profile_init_events(r_profs, "OFFCORE_RESPONSE_1:ANY_REQUEST:ANY_RESPONSE"); */
+
+    profile_init_events(p_profs, "MEM_LOAD_RETIRED:L2_MISS");
 
     start_profile_thread();
 
@@ -747,6 +832,7 @@ internal void profile_fini(void) {
     profile_obj_entry  **obj;
     prof_thread_objects *thr;
     u64                  n_objects;
+    tree_it(u64, u32)    it;
 
     if (!prof_data.thread_started) {
         return;
@@ -781,6 +867,13 @@ internal void profile_fini(void) {
     } OBJ_BUFF_UNLOCK();
 
     profile_putc_flush();
+
+
+    tree_traverse(phase_data, it) {
+        phase_printf("%llu %u\n", tree_it_key(it), tree_it_val(it));
+    }
+    phase_printf("END OF DATA\n");
+
 
     LOG("(profile) %llu objects\n", n_objects);
     LOG("(profile) %llu total read samples\n", prof_data.total_r);

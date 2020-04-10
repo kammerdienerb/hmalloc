@@ -1,0 +1,93 @@
+:# Graph Automata Presentation
+:# CS 594
+:# Brandon Kammerdiener
+
+:include "style.slide"
+:speed inf
+
+:use TITLE
+:vspace 0.36
+Hello World
+
+:use NEXT_SLIDE
+:use HEADER
+Overview
+
+:use BULLET1
+Minimal overhead phase 
+:italic
+boundary
+:no-italic
+ detection to inform runtime memory migration across tiers.
+
+:use BULLET1
+Phase detection with 
+:italic
+identification
+:no-italic
+ has a higher runtime cost and isn't necessary for this application.
+
+:use NEXT_SLIDE
+:use HEADER
+Proposed Idea
+
+:use BULLET1
+Use architectural counters to watch for sudden changes in program behavior indicative of phase change.
+
+:use BULLET2
+PEBS, Perf
+
+:use BULLET1
+Find a combination of program runtime features that are cheap to monitor and accurately identify phase boundaries.
+
+:use BULLET2
+Test IPC, cache miss rate (data/instruction), PC variance
+
+:use NEXT_SLIDE
+:use HEADER
+Current Status
+
+:use BULLET1
+Additional performance counter collection added to the profiling allocator "hmalloc".
+
+:use BULLET1
+Running LULESH workload.
+
+:use BULLET1
+Collected counters for:
+
+:use BULLET2
+Data cache misses
+
+:use BULLET2
+IPC
+
+:use NEXT_SLIDE
+:use HEADER
+DCACHE
+
+:translate 0.05 0
+:image images/cache_misses.png 0.4 0.6
+
+:translate 0.48 -0.59
+:image images/hmalloc.png 0.5 0.6
+
+:use NEXT_SLIDE
+:use HEADER
+DCACHE
+
+:translate 0.05 0
+:image images/cache_miss_rate.png 0.4 0.6
+
+:translate 0.48 -0.59
+:image images/hmalloc.png 0.5 0.6
+
+:use NEXT_SLIDE
+:use HEADER
+IPC
+
+:translate 0.05 0
+:image images/ipc.png 0.4 0.6
+
+:translate 0.48 -0.59
+:image images/hmalloc.png 0.5 0.6
