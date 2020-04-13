@@ -3,7 +3,7 @@
 [ hmalloc :: src/os.c              ::  29 ] MAX_SMALL_CHUNK:    4194240
 [ hmalloc :: src/os.c              ::  30 ] DEFAULT_BLOCK_SIZE: 4194304
 [ hmalloc :: src/os.c              ::  32 ] initialized system info
-[ hmalloc :: src/init.c            ::  43 ] main thread has tid 33
+[ hmalloc :: src/init.c            ::  43 ] main thread has tid 348
 [ hmalloc :: src/internal_malloc.c ::  15 ] initialized dumb malloc
 [ hmalloc :: src/internal_malloc.c :: 158 ] dumb allocation of 32 bytes
 [ hmalloc :: src/internal_malloc.c :: 158 ] dumb allocation of 50 bytes
@@ -11,82 +11,26 @@
 [ hmalloc :: src/init.c            ::  67 ] missing value for HMALLOC_SITE_LAYOUT -- defaulting to HMALLOC_SITE_LAYOUT_THREAD
 [ hmalloc :: src/thread.c          ::  16 ] initialized threads
 [ hmalloc :: src/heap.c            :: 876 ] initialized user heaps table
-[ hmalloc :: src/profile.c         :: 671 ] (profile) opened profile output file
-[ hmalloc :: src/profile.c         :: 676 ] (profile) opened phase profile output file
-[ hmalloc :: src/profile.c         :: 682 ] (profile) created object buffer
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_INST_RETIRED:ALL_STORES' opened from tid 33 (os 61985) for cpu 0
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 0 is 7
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_INST_RETIRED:ALL_STORES' opened from tid 33 (os 61985) for cpu 1
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 1 is 8
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_INST_RETIRED:ALL_STORES' opened from tid 33 (os 61985) for cpu 2
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 2 is 9
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_INST_RETIRED:ALL_STORES' opened from tid 33 (os 61985) for cpu 3
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 3 is 10
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_INST_RETIRED:ALL_STORES' opened from tid 33 (os 61985) for cpu 4
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 4 is 11
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_INST_RETIRED:ALL_STORES' opened from tid 33 (os 61985) for cpu 5
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 5 is 12
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_INST_RETIRED:ALL_STORES' opened from tid 33 (os 61985) for cpu 6
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 6 is 13
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_INST_RETIRED:ALL_STORES' opened from tid 33 (os 61985) for cpu 7
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 7 is 14
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_UOPS_RETIRED.L3_MISS' opened from tid 33 (os 61985) for cpu 0
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 0 is 15
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_UOPS_RETIRED.L3_MISS' opened from tid 33 (os 61985) for cpu 1
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 1 is 16
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_UOPS_RETIRED.L3_MISS' opened from tid 33 (os 61985) for cpu 2
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 2 is 17
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_UOPS_RETIRED.L3_MISS' opened from tid 33 (os 61985) for cpu 3
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 3 is 18
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_UOPS_RETIRED.L3_MISS' opened from tid 33 (os 61985) for cpu 4
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 4 is 19
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_UOPS_RETIRED.L3_MISS' opened from tid 33 (os 61985) for cpu 5
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 5 is 20
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_UOPS_RETIRED.L3_MISS' opened from tid 33 (os 61985) for cpu 6
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 6 is 21
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_UOPS_RETIRED.L3_MISS' opened from tid 33 (os 61985) for cpu 7
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 7 is 22
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_RETIRED:L2_MISS' opened from tid 33 (os 61985) for cpu 0
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 0 is 23
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_RETIRED:L2_MISS' opened from tid 33 (os 61985) for cpu 1
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 1 is 24
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_RETIRED:L2_MISS' opened from tid 33 (os 61985) for cpu 2
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 2 is 25
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_RETIRED:L2_MISS' opened from tid 33 (os 61985) for cpu 3
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 3 is 26
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_RETIRED:L2_MISS' opened from tid 33 (os 61985) for cpu 4
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 4 is 27
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_RETIRED:L2_MISS' opened from tid 33 (os 61985) for cpu 5
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 5 is 28
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_RETIRED:L2_MISS' opened from tid 33 (os 61985) for cpu 6
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 6 is 29
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 643 ] (profile) perf event 'MEM_LOAD_RETIRED:L2_MISS' opened from tid 33 (os 61985) for cpu 7
-[ hmalloc :: src/profile.c         :: 644 ] (profile) fd for cpu 7 is 30
-[ hmalloc :: src/profile.c         :: 567 ] Couldn't find an appropriate event to use. (error -4) Aborting.
-[ hmalloc :: src/profile.c         :: 594 ] initialized profiling thread
+[ hmalloc :: src/profile.c         :: 746 ] (profile) opened profile output file
+[ hmalloc :: src/profile.c         :: 751 ] (profile) opened phase profile output file
+[ hmalloc :: src/profile.c         :: 757 ] (profile) created object buffer
+[ hmalloc :: src/profile.c         :: 711 ] Error opening perf event 0x5182d0 (13 -- Permission denied).
+[ hmalloc :: src/profile.c         :: 712 ] attr = 0x5182d0
+[ hmalloc :: src/profile.c         :: 711 ] Error opening perf event 0x5120d1 (13 -- Permission denied).
+[ hmalloc :: src/profile.c         :: 712 ] attr = 0x5120d1
+[ hmalloc :: src/profile.c         :: 711 ] Error opening perf event 0x5108d1 (13 -- Permission denied).
+[ hmalloc :: src/profile.c         :: 712 ] attr = 0x5108d1
+[ hmalloc :: src/profile.c         :: 667 ] initialized profiling thread
 [ hmalloc :: src/heap.c            :: 171 ] Created a new heap (hid = 0)
-[ hmalloc :: src/thread.c          ::  26 ] initialized a new thread with tid 33
-[ hmalloc :: src/thread.c          ::  27 ] hid 0 is a thread heap (tid = '33')
-[ hmalloc :: src/profile.c         :: 535 ] (profile) profile_fn started
+[ hmalloc :: src/thread.c          ::  26 ] initialized a new thread with tid 348
+[ hmalloc :: src/thread.c          ::  27 ] hid 0 is a thread heap (tid = '348')
+[ hmalloc :: src/profile.c         :: 608 ] (profile) profile_fn started
 [ hmalloc :: src/heap.c            :: 171 ] Created a new heap (hid = 1)
-[ hmalloc :: src/thread.c          ::  26 ] initialized a new thread with tid 34
-[ hmalloc :: src/thread.c          ::  27 ] hid 1 is a thread heap (tid = '34')
-[ hmalloc :: src/profile.c         :: 537 ] (profile) profiling thread has tid 34
-[ hmalloc :: src/profile.c         :: 711 ] (profile) created blocks hash table for thread 33
+[ hmalloc :: src/thread.c          ::  26 ] initialized a new thread with tid 349
+[ hmalloc :: src/thread.c          ::  27 ] hid 1 is a thread heap (tid = '349')
+[ hmalloc :: src/profile.c         :: 610 ] (profile) profiling thread has tid 349
+[ hmalloc :: src/profile.c         :: 799 ] (profile) created blocks hash table for thread 348
+[ hmalloc :: src/profile.c         :: 621 ] (profile) signaled to stop
+[ hmalloc :: src/profile.c         :: 959 ] (profile) 5857 objects
+[ hmalloc :: src/profile.c         :: 960 ] (profile) 0 total read samples
+[ hmalloc :: src/profile.c         :: 961 ] (profile) 0 total write samples

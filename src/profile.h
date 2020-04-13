@@ -80,8 +80,7 @@ typedef struct {
 } profile_data;
 
 internal profile_data prof_data;
-
-internal tree(u64, u32) phase_data;
+internal u64          phase_origin_t;
 
 pthread_mutex_t prof_thread_mutices[HMALLOC_MAX_THREADS]
     = { [0 ... (HMALLOC_MAX_THREADS - 1)] = PTHREAD_MUTEX_INITIALIZER };
