@@ -19,8 +19,15 @@ static inline u64 block_addr_hash(void *b) {
 typedef struct {
     void  *addr;
     u64    size;
+    void  *end_page;
     char  *heap_handle;
     i32    tid;
+    u32    num_blocks;
+    u32    num_blocks_processed;
+    u32    live_intervals;
+    u32    running_num_written_pages;
+    u32    cold_intervals;
+    u32    max_cold_intervals;
 } profile_obj_entry, *profile_obj_entry_ptr;
 
 #define malloc imalloc
@@ -46,6 +53,7 @@ typedef struct {
     pthread_mutex_t      mtx;
     pthread_t            profile_id;
     struct crr_t         crr;
+    char                 pagemap_path[256];
 } profile_data;
 
 internal profile_data prof_data;
