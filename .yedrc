@@ -1,0 +1,6 @@
+yedrc-load ../.yedrc
+set builder-build-command '../build.sh'
+frame-new
+buffer src/profile.h
+frame-vsplit
+buffer src/profile.c
