@@ -10,7 +10,6 @@
 #include "thread.c"
 #include "os.c"
 #include "init.c"
-#include "profile.c"
 
 #define malloc imalloc
 #define free ifree
@@ -29,9 +28,8 @@ external void *hmalloc_malloc(size_t n_bytes) {
         return imalloc(n_bytes);
     }
 
-    heap = acquire_this_thread_heap();
+    heap = get_this_thread_heap();
     addr = heap_alloc(heap, n_bytes);
-    release_heap(heap);
 
     return addr;
 }
@@ -105,9 +103,8 @@ external void * hmalloc_valloc(size_t n_bytes) {
         return ivalloc(n_bytes);
     }
 
-    heap = acquire_this_thread_heap();
+    heap = get_this_thread_heap();
     addr = heap_aligned_alloc(heap, n_bytes, system_info.page_size);
-    release_heap(heap);
 
     return addr;
 }
@@ -132,15 +129,14 @@ external void hmalloc_free(void *addr) {
     block = ADDR_PARENT_BLOCK(addr);
 
     if (block->heap__meta.flags & HEAP_THREAD) {
-        heap = acquire_thread_heap(block->heap__meta.tid);
+        heap = get_thread_heap(block->heap__meta.tid);
     } else if (block->heap__meta.flags & HEAP_USER) {
-        heap = acquire_user_heap(block->heap__meta.handle);
+        heap = get_user_heap(block->heap__meta.handle);
     } else {
         heap = NULL;
         ASSERT(0, "invalid block->heap__meta.flags\n");
     }
     heap_free(heap, addr);
-    release_heap(heap);
 }
 
 external int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_bytes) {
@@ -155,9 +151,8 @@ external int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_by
         return EINVAL;
     }
 
-    heap    = acquire_this_thread_heap();
+    heap    = get_this_thread_heap();
     *memptr = heap_aligned_alloc(heap, n_bytes, alignment);
-    release_heap(heap);
 
     if (unlikely(*memptr == NULL))    { return ENOMEM; }
     return 0;
@@ -171,9 +166,8 @@ external void * hmalloc_aligned_alloc(size_t alignment, size_t size) {
         return ialigned_alloc(alignment, size);
     }
 
-    heap = acquire_this_thread_heap();
+    heap = get_this_thread_heap();
     addr = heap_aligned_alloc(heap, size, alignment);
-    release_heap(heap);
 
     return addr;
 }
@@ -204,7 +198,7 @@ external size_t hmalloc_malloc_size(void *addr) {
 
         return CHUNK_SIZE(chunk);
     } else if (likely(block->block_kind == BLOCK_KIND_SBLOCK)) {
-        return SBLOCK_SLOT_SIZE;
+        return block->s.size_class;
     }
 
     ASSERT(0, "couldn't determine size of allocation");
@@ -217,9 +211,8 @@ external void * hmalloc(heap_handle_t h, size_t n_bytes) {
     heap_t *heap;
     void   *addr;
 
-    heap = acquire_user_heap(h);
+    heap = get_user_heap(h);
     addr = heap_alloc(heap, n_bytes);
-    release_heap(heap);
 
     return addr;
 }
@@ -281,9 +274,8 @@ external void * hvalloc(heap_handle_t h, size_t n_bytes) {
     heap_t *heap;
     void   *addr;
 
-    heap = acquire_user_heap(h);
+    heap = get_user_heap(h);
     addr = heap_aligned_alloc(heap, n_bytes, system_info.page_size);
-    release_heap(heap);
 
     return addr;
 }
@@ -303,9 +295,8 @@ external int hposix_memalign(heap_handle_t h, void **memptr, size_t alignment, s
         return EINVAL;
     }
 
-    heap    = acquire_user_heap(h);
+    heap    = get_user_heap(h);
     *memptr = heap_aligned_alloc(heap, size, alignment);
-    release_heap(heap);
 
     if (unlikely(*memptr == NULL))    { return ENOMEM; }
     return 0;
@@ -315,9 +306,8 @@ external void * haligned_alloc(heap_handle_t h, size_t alignment, size_t size) {
     heap_t *heap;
     void   *addr;
 
-    heap = acquire_user_heap(h);
+    heap = get_user_heap(h);
     addr = heap_aligned_alloc(heap, size, alignment);
-    release_heap(heap);
 
     return addr;
 }
@@ -334,19 +324,6 @@ size_t hmalloc_usable_size(void *addr) {
     return hmalloc_malloc_size(addr);
 }
 
-
-#define SET_PROFILE_SITE(addr, site)                   \
-do {                                                   \
-    if (doing_profiling && (addr)) {                   \
-        block_header_t *_block;                        \
-                                                       \
-        _block = ADDR_PARENT_BLOCK((addr));            \
-                                                       \
-        if (_block->block_kind == BLOCK_KIND_CBLOCK) { \
-            profile_set_site(_block, (site));          \
-        }                                              \
-    }                                                  \
-} while (0)
 
 void * hmalloc_site_malloc(char *site, size_t n_bytes) {
     void *addr;
@@ -365,8 +342,6 @@ void * hmalloc_site_malloc(char *site, size_t n_bytes) {
     }
 
     addr = hmalloc_malloc(n_bytes);
-
-    SET_PROFILE_SITE(addr, site);
 
     return addr;
 }
@@ -389,8 +364,6 @@ void * hmalloc_site_calloc(char *site, size_t count, size_t n_bytes) {
 
     addr = hmalloc_calloc(count, n_bytes);
 
-    SET_PROFILE_SITE(addr, site);
-
     return addr;
 }
 
@@ -411,8 +384,6 @@ void * hmalloc_site_realloc(char *site, void *addr, size_t n_bytes) {
     }
 
     new_addr = hmalloc_realloc(addr, n_bytes);
-
-    SET_PROFILE_SITE(new_addr, site);
 
     return new_addr;
 }
@@ -435,8 +406,6 @@ void * hmalloc_site_reallocf(char *site, void *addr, size_t n_bytes) {
 
     new_addr = hmalloc_reallocf(addr, n_bytes);
 
-    SET_PROFILE_SITE(new_addr, site);
-
     return new_addr;
 }
 
@@ -457,8 +426,6 @@ void * hmalloc_site_valloc(char *site, size_t n_bytes) {
     }
 
     addr = hmalloc_valloc(n_bytes);
-
-    SET_PROFILE_SITE(addr, site);
 
     return addr;
 }
@@ -483,8 +450,6 @@ void * hmalloc_site_pvalloc(char *site, size_t n_bytes) {
     return NULL;
     (void) addr;
 /*     addr = hmalloc_pvalloc(n_bytes); */
-
-/*     SET_PROFILE_SITE(addr, site); */
 
 /*     return addr; */
 }
@@ -525,10 +490,6 @@ int hmalloc_site_posix_memalign(char *site, void **memptr, size_t alignment, siz
 
     err = hmalloc_posix_memalign(memptr, alignment, size);
 
-    if (err == 0) {
-        SET_PROFILE_SITE((*memptr), site);
-    }
-
     return err;
 }
 
@@ -550,8 +511,6 @@ void * hmalloc_site_aligned_alloc(char *site, size_t alignment, size_t size) {
 
     addr = hmalloc_aligned_alloc(alignment, size);
 
-    SET_PROFILE_SITE(addr, site);
-
     return addr;
 }
 
@@ -572,8 +531,6 @@ void * hmalloc_site_memalign(char *site, size_t alignment, size_t size) {
     }
 
     addr = hmalloc_aligned_alloc(alignment, size);
-
-    SET_PROFILE_SITE(addr, site);
 
     return addr;
 }
@@ -609,5 +566,3 @@ external void * memalign(size_t alignment, size_t size) {
 
 external size_t malloc_size(void *addr)        { return hmalloc_malloc_size(addr); }
 external size_t malloc_usable_size(void *addr) { return hmalloc_malloc_size(addr); }
-
-#undef SET_PROFILE_SITE

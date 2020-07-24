@@ -34,36 +34,74 @@ typedef struct cblock_header {
 #define BLOCK_KIND_CBLOCK (0x1)
 #define BLOCK_KIND_SBLOCK (0x2)
 
+#define SBLOCK_CLASS_LARGE  (4096)
+#define SBLOCK_CLASS_MEDIUM (1024)
+#define SBLOCK_CLASS_SMALL  (256)
+
+#define SBLOCK_SMALL_N_REGION_SETS (4)
+
 typedef struct sblock_header {
-    u64                   bitfield_available_regions;
+    u64                   bitfield_regions[4];    /* bit set if region is full */
+    u64                   bitfields_slots[4][64]; /* bit set if slot is taken */
     struct sblock_header *prev;
     void                 *end;
-    u32                   n_empty_regions;
+    u32                   n_allocations;
+    u32                   size_class;
 } sblock_header_t;
 
-typedef struct {
-    u64 bitfield_taken_slots;
-} sblock_region_header_t;
-
-#define ALL_REGIONS_AVAILABLE (0x7FFFFFFFFFFFFFFFULL)
-#define ALL_REGIONS_FULL      (0ULL)
+#define ALL_REGIONS_AVAILABLE (0ULL)
+#define ALL_REGIONS_FULL      (0xFFFFFFFFFFFFFFFFULL)
 #define ALL_SLOTS_AVAILABLE   (0ULL)
 #define ALL_SLOTS_TAKEN       (0xFFFFFFFFFFFFFFFFULL)
 
-#define SBLOCK_SLOT_SIZE      (1024ULL)
-#define SBLOCK_MAX_ALLOC_SIZE (SBLOCK_SLOT_SIZE - sizeof(sblock_region_header_t))
-#define SBLOCK_REGION_SIZE    (64ULL * SBLOCK_SLOT_SIZE)
+/* First slot of first region is reserved for block header. */
+#define SBLOCK_CLASS_LARGE_RESERVED  (0x8000000000000000ULL)
+/* First four slots of first region are reserved for block header. */
+#define SBLOCK_CLASS_MEDIUM_RESERVED (0xF000000000000000ULL)
+/* First sixteen slots of first region are reserved for block header. */
+#define SBLOCK_CLASS_SMALL_RESERVED  (0xFFFF000000000000ULL)
 
-#define SBLOCK_GET_REGION(sblock, N)                           \
-    ((sblock_region_header_t*)(                                \
-      ((void*)(sblock)) + ((N) * (64ULL * SBLOCK_SLOT_SIZE))))
+#define SBLOCK_CLASS_LARGE_MAX_ALLOCS  (1023ULL)
+#define SBLOCK_CLASS_MEDIUM_MAX_ALLOCS (4092ULL)
+#define SBLOCK_CLASS_SMALL_MAX_ALLOCS  (16368ULL)
 
-#define REGION_GET_SLOT(r, N)                                 \
-    (likely(((N) > 0))                                        \
-        ? ((void*)(region)) + ((N) * SBLOCK_SLOT_SIZE)        \
-        : ((void*)(region)) + sizeof(sblock_region_header_t))
+#define SBLOCK_MAX_ALLOC_SIZE (SBLOCK_CLASS_LARGE)
 
+#define _SIZE_CLASS_SELECT(sz, s, m, l)                 \
+((sz) > SBLOCK_CLASS_SMALL                              \
+    ? ((sz) > SBLOCK_CLASS_MEDIUM                       \
+        ? (l)                                           \
+        : (m))                                          \
+    : (s))
 
+#define GET_SBLOCK_SIZE_CLASS(sz)                       \
+    (_SIZE_CLASS_SELECT((sz),                           \
+                        SBLOCK_CLASS_SMALL,             \
+                        SBLOCK_CLASS_MEDIUM,            \
+                        SBLOCK_CLASS_LARGE))
+
+#define GET_SBLOCK_CLASS_IDX(c)        \
+    (_SIZE_CLASS_SELECT((c), 0, 1, 2))
+
+#define GET_SBLOCK_RESERVED_FOR_CLASS(c)                \
+    (_SIZE_CLASS_SELECT((c),                            \
+                        SBLOCK_CLASS_SMALL_RESERVED,    \
+                        SBLOCK_CLASS_MEDIUM_RESERVED,   \
+                        SBLOCK_CLASS_LARGE_RESERVED))
+
+#define GET_SBLOCK_MAX_ALLOCS_FOR_CLASS(c)              \
+    (_SIZE_CLASS_SELECT((c),                            \
+                        SBLOCK_CLASS_SMALL_MAX_ALLOCS,  \
+                        SBLOCK_CLASS_MEDIUM_MAX_ALLOCS, \
+                        SBLOCK_CLASS_LARGE_MAX_ALLOCS))
+
+#define SBLOCK_GET_REGION(sblock, rset, N)     \
+      (((void*)(sblock)) +                     \
+          ((((rset) * 64ULL) + (N)) *          \
+              (64ULL * (sblock)->size_class)))
+
+#define REGION_GET_SLOT(r, N, sclass) \
+    (((void*)(r)) + ((N) * (sclass)))
 
 typedef struct {
     union {
@@ -152,12 +190,14 @@ typedef struct {
     cblock_header_t  *cblocks_head,
                      *cblocks_tail,
                      *big_chunk_cblocks_tail;
+    pthread_mutex_t   c_mtx;
 #ifdef HMALLOC_USE_SBLOCKS
+    u32               n_sblocks[3];
     sblock_header_t  *sblocks_head,
                      *sblocks_tail;
+    pthread_mutex_t   s_mtx;
 #endif
     heap__meta_t      __meta;
-    pthread_mutex_t   mtx;
 } heap_t;
 
 internal void heap_make(heap_t *heap);
@@ -172,6 +212,11 @@ use_hash_table(heap_handle_t, heap_t);
 #undef free
 
 internal hash_table(heap_handle_t, heap_t) user_heaps;
+
+#define HEAP_CLOCK(heap_ptr)   HMALLOC_MTX_LOCKER(&heap_ptr->c_mtx)
+#define HEAP_CUNLOCK(heap_ptr) HMALLOC_MTX_UNLOCKER(&heap_ptr->c_mtx)
+#define HEAP_SLOCK(heap_ptr)   HMALLOC_MTX_LOCKER(&heap_ptr->s_mtx)
+#define HEAP_SUNLOCK(heap_ptr) HMALLOC_MTX_UNLOCKER(&heap_ptr->s_mtx)
 
 pthread_mutex_t user_heaps_lock = PTHREAD_MUTEX_INITIALIZER;
 #define USER_HEAPS_LOCK()   HMALLOC_MTX_LOCKER(&user_heaps_lock)

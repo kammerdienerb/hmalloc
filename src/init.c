@@ -2,7 +2,6 @@
 #include "internal_malloc.h"
 #include "os.h"
 #include "thread.h"
-#include "profile.h"
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -12,10 +11,6 @@ internal void perform_sanity_checks(void) {
     (void)c;
 
     ASSERT(sizeof(c) == 8, "chunk_header_t is invalid");
-
-#ifdef HMALLOC_USE_SBLOCKS
-    ASSERT(IS_POWER_OF_TWO(SBLOCK_SLOT_SIZE), "slot size is not power of two");
-#endif
 }
 
 internal void hmalloc_init(void) {
@@ -71,8 +66,6 @@ internal void hmalloc_init(void) {
 
             user_heaps_init();
 
-            profile_init();
-
             hmalloc_use_imalloc    = 0;
             hmalloc_is_initialized = 1;
 
@@ -82,10 +75,6 @@ internal void hmalloc_init(void) {
 
 __attribute__((destructor))
 internal void hmalloc_fini(void) {
-
-    if (doing_profiling) {
-        profile_fini();
-    }
 
     /*
      * After this point, we're going to stop servicing `free`s.

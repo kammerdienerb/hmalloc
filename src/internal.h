@@ -108,12 +108,12 @@ void log_init(void);
 
 internal u64 next_power_of_2(u64 x);
 
-#define KiB(x) ((x) * 1024ULL)
-#define MiB(x) ((x) * 1024ULL * KiB(1ULL))
-#define GiB(x) ((x) * 1024ULL * MiB(1ULL))
-#define TiB(x) ((x) * 1024ULL * GiB(1ULL))
+#define KB(x) ((x) * 1024ULL)
+#define MB(x) ((x) * 1024ULL * KB(1ULL))
+#define GB(x) ((x) * 1024ULL * MB(1ULL))
+#define TB(x) ((x) * 1024ULL * GB(1ULL))
 
-#define DEFAULT_BLOCK_SIZE (MiB(4))
+#define DEFAULT_BLOCK_SIZE (MB(4))
 
 internal char * istrdup(char *s);
 

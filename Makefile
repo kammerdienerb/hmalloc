@@ -11,12 +11,12 @@ CFG_REL_LOG=-O3 -DHMALLOC_DO_LOGGING
 # CFG=$(CFG_DEB3)
 # CFG=$(CFG_REL1)
 # CFG=$(CFG_REL2)
-# CFG=$(CFG_REL3)
-CFG=$(CFG_REL_LOG)
+CFG=$(CFG_REL3)
+# CFG=$(CFG_REL_LOG)
 
 MAX_ERRS=-fmax-errors=3
 
-C_FLAGS=-shared -fPIC -lpthread -lm -Wall $(MAX_ERRS) -Werror -Wno-unused-function -Wno-unused-value $(CFG) -ldl -lpfm
+C_FLAGS=-shared -fPIC -lpthread -lm -Wall $(MAX_ERRS) -Werror -Wno-unused-function -Wno-unused-value $(CFG) -ldl
 
 # CC=gcc-9
 

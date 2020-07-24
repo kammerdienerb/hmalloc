@@ -1,7 +1,6 @@
 #include "internal.h"
 #include "heap.h"
 #include "os.h"
-#include "profile.h"
 #include "thread.h"
 
 #include <unistd.h>
@@ -87,35 +86,57 @@ internal void heap_add_cblock(heap_t *heap, cblock_header_t *cblock) {
 
 #ifdef HMALLOC_USE_SBLOCKS
 
-internal sblock_header_t * heap_new_sblock(heap_t *heap) {
+internal sblock_header_t * heap_new_sblock(heap_t *heap, int size_class) {
     block_header_t  *block;
     sblock_header_t *sblock;
+    u64              block_size;
     u64              n_pages;
+    int              rset;
 
-    ASSERT(IS_ALIGNED(DEFAULT_BLOCK_SIZE, system_info.page_size), "cblock size isn't aligned to page size");
-    n_pages = DEFAULT_BLOCK_SIZE >> system_info.log_2_page_size;
+    switch (size_class) {
+        case SBLOCK_CLASS_LARGE:
+        case SBLOCK_CLASS_MEDIUM:
+        case SBLOCK_CLASS_SMALL:
+            block_size = DEFAULT_BLOCK_SIZE;
+            break;
+        default: ASSERT(0, "invalid size_class");
+    }
 
-    block                              = get_pages_from_os(n_pages, DEFAULT_BLOCK_SIZE);
-    block->heap__meta                  = heap->__meta;
-    block->tid                         = get_this_tid();
-    block->block_kind                  = BLOCK_KIND_SBLOCK;
-    sblock                             = &(block->s);
-    sblock->bitfield_available_regions = ALL_REGIONS_AVAILABLE;
-    sblock->end                        = ((void*)sblock) + (n_pages << system_info.log_2_page_size);
-    sblock->prev                       = NULL;
-    sblock->n_empty_regions            = 63;
+    ASSERT(IS_ALIGNED(block_size, system_info.page_size), "cblock size isn't aligned to page size");
+
+    n_pages = block_size >> system_info.log_2_page_size;
+
+    block             = get_pages_from_os(n_pages, DEFAULT_BLOCK_SIZE);
+    block->heap__meta = heap->__meta;
+    block->tid        = get_this_tid();
+    block->block_kind = BLOCK_KIND_SBLOCK;
+
+    sblock = &(block->s);
+    memset(sblock, 0, sizeof(*sblock));
+
+    for (rset = 0; rset < SBLOCK_SMALL_N_REGION_SETS; rset += 1) {
+        sblock->bitfield_regions[rset] = ALL_REGIONS_AVAILABLE;
+    }
+    sblock->end           = ((void*)sblock) + (n_pages << system_info.log_2_page_size);
+    sblock->prev          = NULL;
+    sblock->n_allocations = 0;
+    sblock->size_class    = size_class;
 
     /*
-     * If get_pages_from_os() is implemented in terms of mmap(), which
-     * it is, then our memory is zeroed for us.
-     * We are done as far as initialization is concerned.
+     * Fix the slot bits so that the "slots" where the block header live
+     * show up as taken.
      */
+    sblock->bitfields_slots[0][0] = GET_SBLOCK_RESERVED_FOR_CLASS(size_class);
 
     return sblock;
 }
 
 internal void heap_remove_sblock(heap_t *heap, sblock_header_t *sblock) {
     sblock_header_t *sblock_cursor;
+
+    ASSERT(heap->n_sblocks[GET_SBLOCK_CLASS_IDX(sblock->size_class)] > 0,
+           "incorrect number of sblocks in heap");
+    heap->n_sblocks[GET_SBLOCK_CLASS_IDX(sblock->size_class)] -= 1;
 
     if (sblock == heap->sblocks_head && sblock == heap->sblocks_tail) {
         heap->sblocks_head = heap->sblocks_tail = NULL;
@@ -148,6 +169,8 @@ internal void heap_add_sblock(heap_t *heap, sblock_header_t *sblock) {
         sblock->prev       = heap->sblocks_tail;
         heap->sblocks_tail = sblock;
     }
+
+    heap->n_sblocks[GET_SBLOCK_CLASS_IDX(sblock->size_class)] += 1;
 }
 
 #endif
@@ -156,17 +179,18 @@ internal void heap_add_sblock(heap_t *heap, sblock_header_t *sblock) {
 internal void heap_make(heap_t *heap) {
     heap->cblocks_head = heap->cblocks_tail = NULL;
     heap->big_chunk_cblocks_tail            = NULL;
+    pthread_mutex_init(&heap->c_mtx, NULL);
 
 #ifdef HMALLOC_USE_SBLOCKS
+    heap->n_sblocks[0] = heap->n_sblocks[1] = heap->n_sblocks[2] = 0;
     heap->sblocks_head = heap->sblocks_tail = NULL;
+    pthread_mutex_init(&heap->s_mtx, NULL);
 #endif
 
     heap->__meta.handle = NULL;
     heap->__meta.tid    = 0;
     heap->__meta.hid    = __sync_fetch_and_add(&hid_counter, 1);
     heap->__meta.flags  = 0;
-
-    pthread_mutex_init(&heap->mtx, NULL);
 
     LOG("Created a new heap (hid = %d)\n", heap->__meta.hid);
 }
@@ -332,58 +356,96 @@ internal chunk_header_t * heap_get_chunk_from_cblock_if_free(heap_t *heap,
 
 #ifdef HMALLOC_USE_SBLOCKS
 
-internal void * region_get_free_slot(sblock_region_header_t *region) {
+internal void * region_get_free_slot(sblock_header_t *sblock, u32 set_of_regions, u64 r) {
+    u64   slots_bitfield;
     int   first_available_slot;
+    void *region;
     void *slot;
 
-    ASSERT(region->bitfield_taken_slots != ALL_SLOTS_TAKEN, "region has no available slots");
+    slots_bitfield = sblock->bitfields_slots[set_of_regions][r];
 
-    first_available_slot = __builtin_clzll(~(region->bitfield_taken_slots));
-    slot                 = REGION_GET_SLOT(region, first_available_slot);
+    ASSERT(slots_bitfield != ALL_SLOTS_TAKEN, "region has no available slots");
 
     /*
-     * Set this slot's 'taken' bit.
+     * Passing 0 to __builtin_clzll() is undefined behavior.
+     * Luckily, we check that ~slots_bitfield can't be zero
+     * because slots_bitfield can't equal ALL_SLOTS_TAKEN, which
+     * is 0xFFFFFFFFFFFFFFFF (= ~0x0).
+     *
+     * See https://gcc.gnu.org/onlinedocs/gcc/Other-Builtins.html
      */
-    region->bitfield_taken_slots |= (1ULL << (63ULL - first_available_slot));
+    first_available_slot = __builtin_clzll(~slots_bitfield);
+    ASSERT(first_available_slot >= 0, "invalid slot number");
+
+    region = SBLOCK_GET_REGION(sblock, set_of_regions, r);
+    slot   = REGION_GET_SLOT(region, first_available_slot, sblock->size_class);
+
+    /* Set this slot's 'taken' bit. */
+    sblock->bitfields_slots[set_of_regions][r] =
+        slots_bitfield | (1ULL << (63ULL - first_available_slot));
 
     return slot;
 }
 
 internal void * sblock_get_slot_if_free(sblock_header_t *sblock) {
-    int                     first_available_region;
-    sblock_region_header_t *region;
-    void                   *slot;
-    u64                     save_region_bitfield;
+    u32   set_of_regions;
+    int   first_available_region;
+    void *region;
+    void *slot;
 
-    if (sblock->bitfield_available_regions == ALL_REGIONS_FULL) {
+    /* We might not have any free slots to offer. */
+    if (sblock->n_allocations == GET_SBLOCK_MAX_ALLOCS_FOR_CLASS(sblock->size_class)) {
         return NULL;
     }
 
-    first_available_region = __builtin_clzll(sblock->bitfield_available_regions);
+    /*
+     * Find a region set of regions that has at least one region that
+     * isn't full.
+     * For medium and large classes, this is always just set to 0.
+     */
+    set_of_regions = 0;
+    if (sblock->size_class == SBLOCK_CLASS_SMALL) {
+        for (; set_of_regions < SBLOCK_SMALL_N_REGION_SETS; set_of_regions += 1) {
+            if (sblock->bitfield_regions[set_of_regions] != ALL_REGIONS_FULL) {
+                goto found_set;
+            }
+        }
+        return NULL;
+    } else {
+        if (sblock->bitfield_regions[0] == ALL_REGIONS_FULL) { return NULL; }
+    }
+found_set:;
 
-    ASSERT(first_available_region > 0, "invalid region number");
-
-    region = SBLOCK_GET_REGION(sblock, first_available_region);
-    ASSERT(IS_ALIGNED(region, 64ULL*SBLOCK_SLOT_SIZE), "region is misaligned");
-
-    save_region_bitfield = region->bitfield_taken_slots;
-
-    slot = region_get_free_slot(region);
+    /* Find the first available region in the set. */
 
     /*
-     * If the region was previously completely empty, then
-     * we should indicate that it is no longer an empty
-     * region in the sblock.
+     * Passing 0 to __builtin_clzll() is undefined behavior.
+     * Luckily, we check that ~sblock->bitfield_regions can't be
+     * zero because it can't equal ALL_REGIONS_FULL, which is
+     * 0xFFFFFFFFFFFFFFFF (= ~0x0).
+     *
+     * See https://gcc.gnu.org/onlinedocs/gcc/Other-Builtins.html
      */
-    if (save_region_bitfield == ALL_SLOTS_AVAILABLE) {
-        sblock->n_empty_regions -= 1;
-    }
+    first_available_region = __builtin_clzll(~sblock->bitfield_regions[set_of_regions]);
 
-    if (region->bitfield_taken_slots == ALL_SLOTS_TAKEN) {
-        /*
-         * Clear the bit to indicate that this region is full.
-         */
-        sblock->bitfield_available_regions &= ~(1ULL << (63ULL - first_available_region));
+    ASSERT(first_available_region >= 0, "invalid region number");
+
+#ifdef HMALLOC_DO_ASSERTIONS
+    region = SBLOCK_GET_REGION(sblock, set_of_regions, first_available_region);
+    ASSERT(IS_ALIGNED(region, 64ULL * sblock->size_class), "region is misaligned");
+#else
+    (void)region;
+#endif
+
+    slot = region_get_free_slot(sblock, set_of_regions, first_available_region);
+
+    ASSERT(sblock->n_allocations < GET_SBLOCK_MAX_ALLOCS_FOR_CLASS(sblock->size_class),
+           "sblock->n_allocations mismatch");
+    sblock->n_allocations += 1;
+
+    if (sblock->bitfields_slots[set_of_regions][first_available_region] == ALL_SLOTS_TAKEN) {
+        /* Set the bit to indicate that this region is full. */
+        sblock->bitfield_regions[set_of_regions] |= (1ULL << (63ULL - first_available_region));
     }
 
     return slot;
@@ -392,23 +454,26 @@ internal void * sblock_get_slot_if_free(sblock_header_t *sblock) {
 internal void * heap_alloc_from_sblocks(heap_t *heap, u64 n_bytes) {
     sblock_header_t *sblock;
     void            *mem;
+    int              size_class;
 
     ASSERT(IS_ALIGNED(n_bytes, 8), "n_bytes is not aligned");
     ASSERT(n_bytes <= SBLOCK_MAX_ALLOC_SIZE, "requesting too many bytes from sblock");
 
-    mem    = NULL;
-    sblock = heap->sblocks_tail;
+    size_class = GET_SBLOCK_SIZE_CLASS(n_bytes);
+    mem        = NULL;
+    sblock     = heap->sblocks_tail;
 
     while (sblock != NULL) {
-        mem = sblock_get_slot_if_free(sblock);
-
-        if (mem != NULL)    { break; }
+        if (sblock->size_class == size_class) {
+            mem = sblock_get_slot_if_free(sblock);
+            if (mem != NULL)    { break; }
+        }
 
         sblock = sblock->prev;
     }
 
     if (mem == NULL) {
-        sblock = heap_new_sblock(heap);
+        sblock = heap_new_sblock(heap, size_class);
         heap_add_sblock(heap, sblock);
         mem = sblock_get_slot_if_free(sblock);
     }
@@ -430,10 +495,6 @@ internal void heap_free_big_chunk(heap_t *heap, chunk_header_t *big_chunk) {
 
     cblock->prev                 = heap->big_chunk_cblocks_tail;
     heap->big_chunk_cblocks_tail = cblock;
-
-    if (doing_profiling) {
-        profile_delete_block(cblock);
-    }
 }
 
 internal chunk_header_t * heap_get_big_chunk(heap_t *heap, u64 n_bytes) {
@@ -479,10 +540,6 @@ internal chunk_header_t * heap_get_big_chunk(heap_t *heap, u64 n_bytes) {
     block      = ADDR_PARENT_BLOCK(cblock);
     block->tid = get_this_tid();
 
-    if (doing_profiling) {
-        profile_add_block(cblock, n_bytes);
-    }
-
     chunk->flags &= ~(CHUNK_IS_FREE);
     chunk->flags |=   CHUNK_IS_BIG;
 
@@ -521,23 +578,21 @@ internal void * heap_alloc(heap_t *heap, u64 n_bytes) {
      */
     n_bytes = ALIGN(n_bytes, 8);
 
-    if (n_bytes > MAX_SMALL_CHUNK
-    /*
-     * If we are doing object profiling, we will use an allocation
-     * strategy that gives each allocation that won't fit in an sblock
-     * slot it's own block.
-     * This allows us to map a read/write address back to it's object
-     * with a simple bit masking.
-     *
-     * See src/profile.c
-     */
-    ||  (doing_profiling && n_bytes > SBLOCK_MAX_ALLOC_SIZE)) {
-        return heap_big_alloc(heap, n_bytes);
+    if (n_bytes > MAX_SMALL_CHUNK) {
+        HEAP_CLOCK(heap); {
+            mem = heap_big_alloc(heap, n_bytes);
+        } HEAP_CUNLOCK(heap);
+
+        return mem;
     }
 
 #ifdef HMALLOC_USE_SBLOCKS
     if (n_bytes <= SBLOCK_MAX_ALLOC_SIZE) {
-        return heap_alloc_from_sblocks(heap, n_bytes);
+        HEAP_SLOCK(heap); {
+            mem = heap_alloc_from_sblocks(heap, n_bytes);
+        } HEAP_SUNLOCK(heap);
+
+        return mem;
     }
     /*
      * We are allocating something a little bigger.
@@ -545,34 +600,34 @@ internal void * heap_alloc(heap_t *heap, u64 n_bytes) {
      */
 #endif
 
-    ASSERT(!doing_profiling, "shouldn't get here if we're doing object profiling");
+    HEAP_CLOCK(heap); {
+        cblock = heap->cblocks_tail;
 
-    cblock = heap->cblocks_tail;
+        while (cblock != NULL) {
+            chunk = heap_get_chunk_from_cblock_if_free(heap, cblock, n_bytes);
 
-    while (cblock != NULL) {
-        chunk = heap_get_chunk_from_cblock_if_free(heap, cblock, n_bytes);
+            if (chunk != NULL)    { break; }
 
-        if (chunk != NULL)    { break; }
+            cblock = cblock->prev;
+        }
 
-        cblock = cblock->prev;
-    }
+        if (chunk == NULL) {
+            /*
+             * We've gone through all of the cblocks and haven't found a
+             * big enough chunk.
+             * So, we'll have to add a new cblock.
+             */
+            cblock = heap_new_cblock(heap, n_bytes);
+            heap_add_cblock(heap, cblock);
+            chunk = heap_get_chunk_from_cblock_if_free(heap, cblock, n_bytes);
+        }
 
-    if (chunk == NULL) {
-        /*
-         * We've gone through all of the cblocks and haven't found a
-         * big enough chunk.
-         * So, we'll have to add a new cblock.
-         */
-        cblock = heap_new_cblock(heap, n_bytes);
-        heap_add_cblock(heap, cblock);
-        chunk = heap_get_chunk_from_cblock_if_free(heap, cblock, n_bytes);
-    }
+        ASSERT(chunk != NULL, "invalid chunk -- could not allocate memory");
 
-    ASSERT(chunk != NULL, "invalid chunk -- could not allocate memory");
+        mem = CHUNK_USER_MEM(chunk);
 
-    mem = CHUNK_USER_MEM(chunk);
-
-    ASSERT(IS_ALIGNED(mem, 8), "user memory is not properly aligned for performance");
+        ASSERT(IS_ALIGNED(mem, 8), "user memory is not properly aligned for performance");
+    } HEAP_CUNLOCK(heap);
 
     return mem;
 }
@@ -655,51 +710,48 @@ internal void heap_free_from_cblock(heap_t *heap, cblock_header_t *cblock, chunk
 #ifdef HMALLOC_USE_SBLOCKS
 
 internal void heap_free_from_sblock(heap_t *heap, sblock_header_t *sblock, void *slot) {
-    sblock_region_header_t *region;
-    void                   *truncated_addr;
-    u64                     distance,
-                            slot_number,
-                            region_number;
-    int                     is_taken;
+    u64   region_size;
+    void *region_start;
+    u32   region_idx;
+    u32   region_set;
+    u32   slot_idx;
+    int   is_taken;
 
-    truncated_addr = (void*)(((u64)slot) & ~(SBLOCK_SLOT_SIZE - 1ULL));
-    region         = (void*)(((u64)slot) & ~((64ULL * SBLOCK_SLOT_SIZE) - 1ULL));
-    distance       = truncated_addr - (void*)region;
+    region_size   = sblock->size_class * 64ULL;
+    region_start  = (void*)(((u64)slot) & ~(region_size - 1ULL));
+    region_idx    = (((u64)region_start) - ((u64)sblock)) / region_size;
+    region_set    = region_idx >> 6ULL;
+    region_idx   &= 63ULL;
+    slot_idx      = (((u64)slot) - ((u64)region_start)) / sblock->size_class;
 
-    ASSERT(IS_ALIGNED(distance, SBLOCK_SLOT_SIZE), "incorrect slot distance");
+    ASSERT(slot_idx < 64, "invalid slot index");
+    ASSERT(sblock->size_class == SBLOCK_CLASS_SMALL || region_set == 0,
+           "size class is medium or large, but region set isn't 0");
+    ASSERT(slot == REGION_GET_SLOT(region_start, slot_idx, sblock->size_class),
+           "couldn't match slot address to its supposed location");
 
-    slot_number = distance >> LOG2_64BIT(SBLOCK_SLOT_SIZE);
-
-    is_taken = !!(region->bitfield_taken_slots & (1ULL << (63ULL - slot_number)));
+    is_taken = !!(sblock->bitfields_slots[region_set][region_idx]
+                    & (1ULL << (63ULL - slot_idx)));
 
     ASSERT(is_taken, "attempting to free a sblock slot that isn't taken");
-
     (void)is_taken;
 
-    region->bitfield_taken_slots &= ~(1ULL << (63ULL - slot_number));
+    /* Clear the slot's bit. */
+    sblock->bitfields_slots[region_set][region_idx]
+        &= ~(1ULL << (63ULL - slot_idx));
 
-    /*
-     * If this region has just become completely empty, then
-     * we should indicate that to the sblock.
-     */
-    if (region->bitfield_taken_slots == ALL_SLOTS_AVAILABLE) {
-        sblock->n_empty_regions += 1;
-    }
+    /* Clear the bit to indicate that this region has at least one available slot. */
+    sblock->bitfield_regions[region_set] &= ~(1ULL << (63ULL - region_idx));
 
-    distance      = (void*)region - (void*)sblock;
-    region_number = (distance >> LOG2_64BIT(SBLOCK_SLOT_SIZE * 64ULL));
-
-    ASSERT(region_number > 0, "incorrect region number");
-
-    sblock->bitfield_available_regions |= (1ULL << (63ULL - region_number));
+    ASSERT(sblock->n_allocations > 0, "sblock->n_allocations mismatch");
+    sblock->n_allocations -= 1;
 
     /*
      * If all regions are empty (i.e., the sblock contains no allocations),
      * then we can consider releasing the sblock.
      */
-    if (sblock->n_empty_regions == 63) {
-        /* If this sblock isn't the only sblock in the heap... */
-        if (sblock != heap->sblocks_head || sblock != heap->sblocks_tail) {
+    if (sblock->n_allocations == 0) {
+        if (heap->n_sblocks[GET_SBLOCK_CLASS_IDX(sblock->size_class)] > 1) {
             heap_remove_sblock(heap, sblock);
             release_sblock(sblock);
         }
@@ -718,30 +770,34 @@ internal void heap_free(heap_t *heap, void *addr) {
 
 #ifdef HMALLOC_USE_SBLOCKS
     if (block->block_kind == BLOCK_KIND_SBLOCK) {
-        heap_free_from_sblock(heap, &(block->s), addr);
+        HEAP_SLOCK(heap); {
+            heap_free_from_sblock(heap, &(block->s), addr);
+        } HEAP_SUNLOCK(heap);
     } else
 #endif
     {
-        chunk = CHUNK_FROM_USER_MEM(addr);
-        ASSERT(block->block_kind == BLOCK_KIND_CBLOCK, "block isn't cblock");
-        cblock = &(block->c);
+        HEAP_CLOCK(heap); {
+            chunk = CHUNK_FROM_USER_MEM(addr);
+            ASSERT(block->block_kind == BLOCK_KIND_CBLOCK, "block isn't cblock");
+            cblock = &(block->c);
 
-        if (chunk->flags & CHUNK_IS_BIG) {
-            heap_free_big_chunk(heap, chunk);
-        } else {
-            heap_free_from_cblock(heap, cblock, chunk);
-        }
+            if (chunk->flags & CHUNK_IS_BIG) {
+                heap_free_big_chunk(heap, chunk);
+            } else {
+                heap_free_from_cblock(heap, cblock, chunk);
+            }
+        } HEAP_CUNLOCK(heap);
     }
 }
 
 internal void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignment) {
+    u64              size_class;
     cblock_header_t *cblock;
-    sblock_header_t *sblock;
     block_header_t  *block;
     chunk_header_t  *first_chunk,
                     *first_chunk_check,
                     *chunk;
-    void            *mem, *sblock_not_aligned,
+    void            *mem,
                     *aligned_addr;
     u64              new_cblock_size_request,
                      first_chunk_size;
@@ -753,32 +809,7 @@ internal void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignmen
 
     if (n_bytes < 8)               { n_bytes = 8; }
 
-    /*
-     * All sblock slots *EXCEPT FOR THE FIRST ONE* are aligned on
-     * SBLOCK_SLOT_SIZE boundaries.
-     * If size will fit in a slot, we'll try to get one.
-     * On the off chance that the one we get is the first one, we'll
-     * hold on to it and try again.
-     * We won't be able to keep doing this unless we store all of the
-     * slots we've tried and free them all afterwards.
-     * So, we'll just give up after the second try and continue to the
-     * primary code path.
-     */
-    if (n_bytes <= SBLOCK_MAX_ALLOC_SIZE && alignment <= SBLOCK_SLOT_SIZE){
-        mem = heap_alloc_from_sblocks(heap, n_bytes);
-        if (!IS_ALIGNED(mem, SBLOCK_SLOT_SIZE)) {
-            sblock_not_aligned = mem;
-            sblock = &((block_header_t*)ADDR_PARENT_BLOCK(sblock_not_aligned))->s;
-            mem = heap_alloc_from_sblocks(heap, n_bytes);
-            heap_free_from_sblock(heap, sblock, sblock_not_aligned);
-        }
-        if (IS_ALIGNED(mem, SBLOCK_SLOT_SIZE)) {
-            ASSERT(IS_ALIGNED(mem, alignment), "failed to align from slot allocation");
-            return mem;
-        } else {
-            mem = NULL;
-        }
-    }
+    mem = NULL;
 
     /*
      * All allocations are guaranteed to be aligned on 8 byte
@@ -789,17 +820,20 @@ internal void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignmen
     }
 
     /*
-     * If we are doing profiling, we should fall back to the big
-     * allocation routine for these reasons:
-     *
-     * 1. We've already put the object in an sblock slot if it could
-     *    have gone there.
-     * 2. An object from heap_big_alloc() _will_ be aligned for any valid
-     *    alignment value.
-     * 3. The object needs to be profiled.. so yeah.
+     * All sblock slots are aligned on boundaries equal to their size class.
+     * If size will fit in a slot, we'll try to get one.
      */
-    if (doing_profiling) {
-        return heap_big_alloc(heap, n_bytes);
+    if (n_bytes <= SBLOCK_MAX_ALLOC_SIZE && alignment <= SBLOCK_MAX_ALLOC_SIZE) {
+        HEAP_SLOCK(heap); {
+            size_class = GET_SBLOCK_SIZE_CLASS(MAX(n_bytes, alignment));
+            mem        = heap_alloc_from_sblocks(heap, size_class);
+        } HEAP_SUNLOCK(heap);
+
+        if (mem) {
+            ASSERT(IS_ALIGNED(mem, alignment),
+                "failed to align from slot allocation");
+            return mem;
+        }
     }
 
     /*
@@ -816,44 +850,49 @@ internal void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignmen
     }
 
 
+    HEAP_CLOCK(heap); {
+        new_cblock_size_request =   n_bytes                /* The bytes we need to give the user. */
+                                + alignment                /* Make sure there's space to align. */
+                                + sizeof(chunk_header_t);  /* We're going to put another chunk in there. */
 
-    new_cblock_size_request =   n_bytes                /* The bytes we need to give the user. */
-                             + alignment               /* Make sure there's space to align. */
-                             + sizeof(chunk_header_t); /* We're going to put another chunk in there. */
+        cblock = heap_new_cblock(heap, new_cblock_size_request);
+        block  = (block_header_t*)cblock;
+        heap_add_cblock(heap, cblock);
 
-    cblock = heap_new_cblock(heap, new_cblock_size_request);
-    block  = (block_header_t*)cblock;
-    heap_add_cblock(heap, cblock);
+        first_chunk_check = ((void*)block) + sizeof(block_header_t);
 
-    first_chunk_check = ((void*)block) + sizeof(block_header_t);
+        if (IS_ALIGNED(CHUNK_USER_MEM(first_chunk_check), alignment)) {
+            aligned_addr = CHUNK_USER_MEM(first_chunk_check);
 
-    if (IS_ALIGNED(CHUNK_USER_MEM(first_chunk_check), alignment)) {
-        aligned_addr = CHUNK_USER_MEM(first_chunk_check);
+            chunk = heap_get_chunk_from_cblock_if_free(heap, cblock, n_bytes);
 
-        chunk = heap_get_chunk_from_cblock_if_free(heap, cblock, n_bytes);
+            ASSERT(first_chunk_check == chunk, "first chunk mismatch");
+        } else {
+            aligned_addr = ALIGN(CHUNK_USER_MEM(first_chunk_check), alignment);
 
-        ASSERT(first_chunk_check == chunk, "first chunk mismatch");
-    } else {
-        aligned_addr = ALIGN(CHUNK_USER_MEM(first_chunk_check), alignment);
+            first_chunk_size =   (aligned_addr - sizeof(chunk_header_t))
+                            - (((void*)block) + sizeof(block_header_t) + sizeof(chunk_header_t));
+            first_chunk      = heap_get_chunk_from_cblock_if_free(heap, cblock, first_chunk_size);
+            chunk            = heap_get_chunk_from_cblock_if_free(heap, cblock, n_bytes);
 
-        first_chunk_size =   (aligned_addr - sizeof(chunk_header_t))
-                           - (((void*)block) + sizeof(block_header_t) + sizeof(chunk_header_t));
-        first_chunk      = heap_get_chunk_from_cblock_if_free(heap, cblock, first_chunk_size);
-        chunk            = heap_get_chunk_from_cblock_if_free(heap, cblock, n_bytes);
+            ASSERT(first_chunk != NULL, "did not get first chunk");
+            ASSERT(first_chunk_check == first_chunk, "first chunk mismatch");
 
-        ASSERT(first_chunk != NULL, "did not get first chunk");
-        ASSERT(first_chunk_check == first_chunk, "first chunk mismatch");
+            if (chunk->flags & CHUNK_IS_BIG) {
+                heap_free_big_chunk(heap, first_chunk);
+            } else {
+                heap_free_from_cblock(heap, cblock, first_chunk);
+            }
+        }
 
-        heap_free(heap, CHUNK_USER_MEM(first_chunk));
-    }
 
+        ASSERT(chunk != NULL, "did not get aligned chunk");
+        ASSERT(aligned_addr < cblock->end, "aligned address is outside of cblock");
 
-    ASSERT(chunk != NULL, "did not get aligned chunk");
-    ASSERT(aligned_addr < cblock->end, "aligned address is outside of cblock");
+        mem = CHUNK_USER_MEM(chunk);
 
-    mem = CHUNK_USER_MEM(chunk);
-
-    ASSERT(mem == aligned_addr, "memory acquired from chunk is not the expected aligned address");
+        ASSERT(mem == aligned_addr, "memory acquired from chunk is not the expected aligned address");
+    } HEAP_CUNLOCK(heap);
 
     return mem;
 }
