@@ -15,7 +15,11 @@
 #define HMALLOC_ANSI_C
 /* #define HMALLOC_DO_LOGGING */
 /* #define HMALLOC_DO_ASSERTIONS */
-#define HMALLOC_USE_SBLOCKS
+/* #define HMALLOC_USE_SBLOCKS */
+
+#define EXPAND(a) a
+#define CAT2(x, y) _CAT2(x, y)
+#define _CAT2(x, y) x##y
 
 #define likely(x)   (__builtin_expect(!!(x), 1))
 #define unlikely(x) (__builtin_expect(!!(x), 0))
@@ -39,8 +43,11 @@
 #define internal static
 #define external extern
 
-#define HMALLOC_MTX_LOCKER(mtx_ptr)   do { pthread_mutex_lock(mtx_ptr);   } while (0)
-#define HMALLOC_MTX_UNLOCKER(mtx_ptr) do { pthread_mutex_unlock(mtx_ptr); } while (0)
+#ifdef HMALLOC_DEBUG
+#define HMALLOC_ALWAYS_INLINE static
+#else
+#define HMALLOC_ALWAYS_INLINE __attribute__((always_inline)) static inline
+#endif /* HMALLOC_DEBUG */
 
 #include "FormatString.h"
 internal void hmalloc_putc(char c, void *fd);
@@ -56,12 +63,13 @@ do { if (unlikely(!(cond))) {                            \
 #define ASSERT(cond, mst) ;
 #endif
 
+#include "locks.h"
 #ifdef HMALLOC_DO_LOGGING
-internal pthread_mutex_t log_mtx = PTHREAD_MUTEX_INITIALIZER;
-internal int log_fd              = 1;
+internal mutex_t log_mtx = MUTEX_INITIALIZER;
+internal int     log_fd  = 1;
 
-#define LOG_LOCK()   HMALLOC_MTX_LOCKER(&log_mtx)
-#define LOG_UNLOCK() HMALLOC_MTX_UNLOCKER(&log_mtx)
+#define LOG_LOCK()   mutex_lock(&log_mtx)
+#define LOG_UNLOCK() mutex_unlock(&log_mtx)
 
 #define LOG(fmt, ...)                                         \
 do {                                                          \

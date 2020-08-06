@@ -15,7 +15,6 @@ internal pthread_mutex_t hmalloc_init_lock = PTHREAD_MUTEX_INITIALIZER;
 #define HMALLOC_SITE_LAYOUT_SITE    (3)
 
 internal int hmalloc_is_initialized = 0;
-internal int hmalloc_use_imalloc    = 0;
 internal int hmalloc_ignore_frees   = 0;
 internal int hmalloc_site_layout    = HMALLOC_SITE_LAYOUT_UNKNOWN;
 

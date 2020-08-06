@@ -11,6 +11,7 @@ internal void perform_sanity_checks(void) {
     (void)c;
 
     ASSERT(sizeof(c) == 8, "chunk_header_t is invalid");
+    ASSERT(IS_ALIGNED(sizeof(block_header_t), 8), "block header is misaligned");
 }
 
 internal void hmalloc_init(void) {
@@ -36,8 +37,6 @@ internal void hmalloc_init(void) {
             system_info_init();
 
             LOG("main thread has tid %d\n", get_this_tid());
-
-            hmalloc_use_imalloc = 1;
 
             imalloc_init();
 
@@ -66,7 +65,6 @@ internal void hmalloc_init(void) {
 
             user_heaps_init();
 
-            hmalloc_use_imalloc    = 0;
             hmalloc_is_initialized = 1;
 
         } INIT_UNLOCK();

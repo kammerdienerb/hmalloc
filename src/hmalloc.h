@@ -12,6 +12,7 @@ void * hmalloc_reallocf(void *addr, size_t n_bytes);
 void * hmalloc_valloc(size_t n_bytes);
 void   hmalloc_free(void *addr);
 int    hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_bytes);
+void * hmalloc_aligned_alloc(size_t alignment, size_t size);
 size_t hmalloc_malloc_size(void *addr);
 
 

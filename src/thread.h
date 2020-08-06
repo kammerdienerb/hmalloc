@@ -3,9 +3,9 @@
 
 #include "internal.h"
 #include "heap.h"
+#include "locks.h"
 
 #include <pthread.h>
-
 
 /*
  * @TODO
@@ -17,9 +17,9 @@
  *                                                -- Brandon
  */
 
-
+/* MUST be a multiple of 64. */
 #ifndef HMALLOC_MAX_THREADS
-#define HMALLOC_MAX_THREADS (512ULL)
+#define HMALLOC_MAX_THREADS (1024ULL)
 #endif
 
 #if HMALLOC_MAX_THREADS > (1 << 16)
@@ -35,36 +35,25 @@
 typedef u16 hm_tid_t;
 
 typedef struct {
-    heap_t   heap;
-    hm_tid_t tid;
-    int      is_valid;
+    heap_t        heap;
+    hm_tid_t      tid;
+    int           is_valid;
+    int           is_owned;
+    u64           id;
+    pthread_key_t junk_key;
 } thread_data_t;
 
-internal thread_data_t   thread_datas[HMALLOC_MAX_THREADS];
-internal pthread_mutex_t thread_datas_mtx = PTHREAD_MUTEX_INITIALIZER;
-
-internal __thread thread_data_t *local_thr;
 
 internal void threads_init(void);
 internal void thread_init(thread_data_t *thr, hm_tid_t tid);
-internal thread_data_t * get_this_thread(void);
 internal thread_data_t * get_thread(hm_tid_t tid);
-/* internal thread_data_t * acquire_this_thread(void); */
-/* internal thread_data_t * acquire_thread(hm_tid_t tid); */
-/* internal void release_thread(thread_data_t *thr); */
+internal thread_data_t * get_this_thread(void);
 
 internal heap_t * get_this_thread_heap(void);
 internal heap_t * get_thread_heap(hm_tid_t tid);
 internal heap_t * get_user_heap(heap_handle_t handle);
-/* internal heap_t * acquire_this_thread_heap(void); */
-/* internal heap_t * acquire_thread_heap(hm_tid_t tid); */
-/* internal heap_t * acquire_user_heap(heap_handle_t handle); */
-/* internal void release_heap(heap_t *heap); */
 
 internal hm_tid_t get_this_tid(void);
-
-#define THR_DATA_LOCK(thr_ptr)   HMALLOC_MTX_LOCKER(&thread_datas_mtx)
-#define THR_DATA_UNLOCK(thr_ptr) HMALLOC_MTX_UNLOCKER(&thread_datas_mtx)
 
 #define OS_TID_TO_HM_TID(os_tid) ((os_tid) & (HMALLOC_MAX_THREADS - 1))
 

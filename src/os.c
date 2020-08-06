@@ -32,7 +32,8 @@ internal void system_info_init(void) {
     LOG("initialized system info\n");
 }
 
-internal void * get_pages_from_os(u64 n_pages, u64 alignment) {
+HMALLOC_ALWAYS_INLINE
+void * get_pages_from_os(u64 n_pages, u64 alignment) {
     void *aligned_start,
          *aligned_end,
          *mem_start,
@@ -44,14 +45,13 @@ internal void * get_pages_from_os(u64 n_pages, u64 alignment) {
 
     desired_size = (n_pages << system_info.log_2_page_size);
 
-    ASSERT(desired_size >= alignment, "alignment greater than desired memory size");
-
     /*
      * Ask for twice the desired size so that we can get aligned
      * memory.
      */
-    first_map_size = desired_size << 1ULL;
+    first_map_size = MAX(desired_size, alignment) << 1ULL;
 
+    errno = 0;
     mem_start = mmap(NULL,
                 first_map_size,
                 PROT_READ   | PROT_WRITE,
@@ -61,8 +61,10 @@ internal void * get_pages_from_os(u64 n_pages, u64 alignment) {
 
     if (unlikely(mem_start == MAP_FAILED || mem_start == NULL)) {
         LOG("ERROR -- could not get %lu pages (%lu bytes) from OS\n", n_pages, desired_size);
+        ASSERT(0, "mmap() failed");
         return NULL;
     }
+    ASSERT(errno == 0, "errno non-zero after mmap()");
 
     aligned_start = ALIGN(mem_start, alignment);
     aligned_end   = aligned_start + desired_size;
@@ -81,7 +83,8 @@ internal void * get_pages_from_os(u64 n_pages, u64 alignment) {
     return aligned_start;
 }
 
-internal void release_pages_to_os(void *addr, u64 n_pages) {
+HMALLOC_ALWAYS_INLINE
+void release_pages_to_os(void *addr, u64 n_pages) {
     int err_code;
 
     ASSERT(n_pages > 0, "n_pages is zero");
@@ -93,31 +96,12 @@ internal void release_pages_to_os(void *addr, u64 n_pages) {
     (void)err_code;
 }
 
-__thread int thr_handle;
-
-internal pid_t os_get_tid(void) {
+HMALLOC_ALWAYS_INLINE
+pid_t os_get_tid(void) {
     pid_t tid;
 
-    /*
-     * Use the address of a thread-local storage
-     * variable to give us a value that changes per
-     * thread.
-     *
-     * We shift by eleven because that number seemed to
-     * align with what the addresses were multiples of
-     * on the test OS.
-     *
-     * Should be pretty fast.
-     */
-    /* tid = (pid_t)((u64)&thr_handle >> 11); */
-
-    /*
-     * This method is slower because of the system call
-     * overhead, but it gives us less collisions..
-     */
     tid = syscall(SYS_gettid);
     ASSERT(tid != -1, "did not get tid");
-    return tid;
 
-    /* return tid; */
+    return tid;
 }

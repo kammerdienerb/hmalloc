@@ -9,38 +9,20 @@
 #include "heap.c"
 #include "thread.c"
 #include "os.c"
+#include "locks.c"
 #include "init.c"
-
-#define malloc imalloc
-#define free ifree
-#include "array.c"
-#undef malloc
-#undef free
 
 #include <string.h>
 #include <errno.h>
 
-external void *hmalloc_malloc(size_t n_bytes) {
-    heap_t *heap;
-    void   *addr;
-
-    if (unlikely(hmalloc_use_imalloc)) {
-        return imalloc(n_bytes);
-    }
-
-    heap = get_this_thread_heap();
-    addr = heap_alloc(heap, n_bytes);
-
-    return addr;
+__attribute__((always_inline))
+external inline void *hmalloc_malloc(size_t n_bytes) {
+    return heap_alloc(get_this_thread_heap(), n_bytes);
 }
 
-external void * hmalloc_calloc(size_t count, size_t n_bytes) {
+external inline void * hmalloc_calloc(size_t count, size_t n_bytes) {
     void *addr;
     u64   new_n_bytes;
-
-    if (unlikely(hmalloc_use_imalloc)) {
-        return icalloc(count, n_bytes);
-    }
 
     new_n_bytes = count * n_bytes;
     addr        = hmalloc_malloc(new_n_bytes);
@@ -50,13 +32,9 @@ external void * hmalloc_calloc(size_t count, size_t n_bytes) {
     return addr;
 }
 
-external void * hmalloc_realloc(void *addr, size_t n_bytes) {
+external inline void * hmalloc_realloc(void *addr, size_t n_bytes) {
     void *new_addr;
     u64   old_size;
-
-    if (unlikely(hmalloc_use_imalloc)) {
-        return irealloc(addr, n_bytes);
-    }
 
     new_addr = NULL;
 
@@ -91,17 +69,13 @@ external void * hmalloc_realloc(void *addr, size_t n_bytes) {
     return new_addr;
 }
 
-external void * hmalloc_reallocf(void *addr, size_t n_bytes) {
+external inline void * hmalloc_reallocf(void *addr, size_t n_bytes) {
     return hmalloc_realloc(addr, n_bytes);
 }
 
-external void * hmalloc_valloc(size_t n_bytes) {
+external inline void * hmalloc_valloc(size_t n_bytes) {
     heap_t *heap;
     void   *addr;
-
-    if (unlikely(hmalloc_use_imalloc)) {
-        return ivalloc(n_bytes);
-    }
 
     heap = get_this_thread_heap();
     addr = heap_aligned_alloc(heap, n_bytes, system_info.page_size);
@@ -109,42 +83,18 @@ external void * hmalloc_valloc(size_t n_bytes) {
     return addr;
 }
 
-external void hmalloc_free(void *addr) {
-    heap_t         *heap;
-    block_header_t *block;
+__attribute__((always_inline))
+external inline void hmalloc_free(void *addr) {
+    if (likely(addr != NULL)) {
+        ASSERT(BLOCK_GET_HEAP_PTR(ADDR_PARENT_BLOCK(addr)) != NULL,
+              "attempting to free from block that doesn't have a heap\n");
 
-    if (unlikely(hmalloc_ignore_frees)) {
-        return;
+        heap_free(BLOCK_GET_HEAP_PTR(ADDR_PARENT_BLOCK(addr)), addr);
     }
-
-    if (unlikely(hmalloc_use_imalloc)) {
-        ifree(addr);
-        return;
-    }
-
-    if (unlikely(addr == NULL)) {
-        return;
-    }
-
-    block = ADDR_PARENT_BLOCK(addr);
-
-    if (block->heap__meta.flags & HEAP_THREAD) {
-        heap = get_thread_heap(block->heap__meta.tid);
-    } else if (block->heap__meta.flags & HEAP_USER) {
-        heap = get_user_heap(block->heap__meta.handle);
-    } else {
-        heap = NULL;
-        ASSERT(0, "invalid block->heap__meta.flags\n");
-    }
-    heap_free(heap, addr);
 }
 
-external int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_bytes) {
+external inline int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_bytes) {
     heap_t *heap;
-
-    if (unlikely(hmalloc_use_imalloc)) {
-        return iposix_memalign(memptr, alignment, n_bytes);
-    }
 
     if (unlikely(!IS_POWER_OF_TWO(alignment)
     ||  alignment < sizeof(void*))) {
@@ -158,13 +108,9 @@ external int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_by
     return 0;
 }
 
-external void * hmalloc_aligned_alloc(size_t alignment, size_t size) {
+external inline void * hmalloc_aligned_alloc(size_t alignment, size_t size) {
     heap_t *heap;
     void   *addr;
-
-    if (unlikely(hmalloc_use_imalloc)) {
-        return ialigned_alloc(alignment, size);
-    }
 
     heap = get_this_thread_heap();
     addr = heap_aligned_alloc(heap, size, alignment);
@@ -172,13 +118,9 @@ external void * hmalloc_aligned_alloc(size_t alignment, size_t size) {
     return addr;
 }
 
-external size_t hmalloc_malloc_size(void *addr) {
+external inline size_t hmalloc_malloc_size(void *addr) {
     block_header_t *block;
     chunk_header_t *chunk;
-
-    if (unlikely(hmalloc_use_imalloc)) {
-        return imalloc_size(addr);
-    }
 
     if (unlikely(addr == NULL)) {
         return 0;
@@ -197,9 +139,12 @@ external size_t hmalloc_malloc_size(void *addr) {
         }
 
         return CHUNK_SIZE(chunk);
-    } else if (likely(block->block_kind == BLOCK_KIND_SBLOCK)) {
-        return block->s.size_class;
     }
+#ifdef HMALLOC_USE_SBLOCKS
+    else if (likely(block->block_kind == BLOCK_KIND_SBLOCK)) {
+        return SBLOCK_CLASS_MAX(block->s.size_class);
+    }
+#endif
 
     ASSERT(0, "couldn't determine size of allocation");
 
@@ -207,7 +152,7 @@ external size_t hmalloc_malloc_size(void *addr) {
 }
 
 
-external void * hmalloc(heap_handle_t h, size_t n_bytes) {
+external inline void * hmalloc(heap_handle_t h, size_t n_bytes) {
     heap_t *heap;
     void   *addr;
 
@@ -217,7 +162,7 @@ external void * hmalloc(heap_handle_t h, size_t n_bytes) {
     return addr;
 }
 
-external void * hcalloc(heap_handle_t h, size_t count, size_t n_bytes) {
+external inline void * hcalloc(heap_handle_t h, size_t count, size_t n_bytes) {
     void *addr;
     u64   new_n_bytes;
 
@@ -229,7 +174,7 @@ external void * hcalloc(heap_handle_t h, size_t count, size_t n_bytes) {
     return addr;
 }
 
-external void * hrealloc(heap_handle_t h, void *addr, size_t n_bytes) {
+external inline void * hrealloc(heap_handle_t h, void *addr, size_t n_bytes) {
     void *new_addr;
     u64   old_size;
 
@@ -266,11 +211,11 @@ external void * hrealloc(heap_handle_t h, void *addr, size_t n_bytes) {
     return new_addr;
 }
 
-external void * hreallocf(heap_handle_t h, void *addr, size_t n_bytes) {
+external inline void * hreallocf(heap_handle_t h, void *addr, size_t n_bytes) {
     return hrealloc(h, addr, n_bytes);
 }
 
-external void * hvalloc(heap_handle_t h, size_t n_bytes) {
+external inline void * hvalloc(heap_handle_t h, size_t n_bytes) {
     heap_t *heap;
     void   *addr;
 
@@ -280,14 +225,14 @@ external void * hvalloc(heap_handle_t h, size_t n_bytes) {
     return addr;
 }
 
-external void * hpvalloc(heap_handle_t h, size_t n_bytes) {
+external inline void * hpvalloc(heap_handle_t h, size_t n_bytes) {
     ASSERT(0, "hpvalloc");
     return NULL;
 }
 
-external void hfree(void *addr)    { hmalloc_free(addr); }
+external inline void hfree(void *addr)    { hmalloc_free(addr); }
 
-external int hposix_memalign(heap_handle_t h, void **memptr, size_t alignment, size_t size) {
+external inline int hposix_memalign(heap_handle_t h, void **memptr, size_t alignment, size_t size) {
     heap_t *heap;
 
     if (unlikely(!IS_POWER_OF_TWO(alignment)
@@ -302,7 +247,7 @@ external int hposix_memalign(heap_handle_t h, void **memptr, size_t alignment, s
     return 0;
 }
 
-external void * haligned_alloc(heap_handle_t h, size_t alignment, size_t size) {
+external inline void * haligned_alloc(heap_handle_t h, size_t alignment, size_t size) {
     heap_t *heap;
     void   *addr;
 
@@ -312,7 +257,7 @@ external void * haligned_alloc(heap_handle_t h, size_t alignment, size_t size) {
     return addr;
 }
 
-external void * hmemalign(heap_handle_t h, size_t alignment, size_t size) {
+external inline void * hmemalign(heap_handle_t h, size_t alignment, size_t size) {
     return haligned_alloc(h, alignment, size);
 }
 
@@ -544,25 +489,25 @@ size_t hmalloc_site_malloc_usable_size(void *addr) {
 }
 
 
-external void * malloc(size_t n_bytes)               { return hmalloc_malloc(n_bytes);         }
-external void * calloc(size_t count, size_t n_bytes) { return hmalloc_calloc(count, n_bytes);  }
-external void * realloc(void *addr, size_t n_bytes)  { return hmalloc_realloc(addr, n_bytes);  }
-external void * reallocf(void *addr, size_t n_bytes) { return hmalloc_reallocf(addr, n_bytes); }
-external void * valloc(size_t n_bytes)               { return hmalloc_valloc(n_bytes);         }
-external void * pvalloc(size_t n_bytes)              { ASSERT(0, "pvalloc"); return NULL;      }
-external void   free(void *addr)                     { hmalloc_free(addr);                     }
+external inline void * malloc(size_t n_bytes)               { return hmalloc_malloc(n_bytes);         }
+external inline void * calloc(size_t count, size_t n_bytes) { return hmalloc_calloc(count, n_bytes);  }
+external inline void * realloc(void *addr, size_t n_bytes)  { return hmalloc_realloc(addr, n_bytes);  }
+external inline void * reallocf(void *addr, size_t n_bytes) { return hmalloc_reallocf(addr, n_bytes); }
+external inline void * valloc(size_t n_bytes)               { return hmalloc_valloc(n_bytes);         }
+external inline void * pvalloc(size_t n_bytes)              { ASSERT(0, "pvalloc"); return NULL;      }
+external inline void   free(void *addr)                     { hmalloc_free(addr);                     }
 
-external int posix_memalign(void **memptr, size_t alignment, size_t size) {
+external inline int posix_memalign(void **memptr, size_t alignment, size_t size) {
     return hmalloc_posix_memalign(memptr, alignment, size);
 }
 
-external void * aligned_alloc(size_t alignment, size_t size) {
+external inline void * aligned_alloc(size_t alignment, size_t size) {
     return hmalloc_aligned_alloc(alignment, size);
 }
 
-external void * memalign(size_t alignment, size_t size) {
+external inline void * memalign(size_t alignment, size_t size) {
     return hmalloc_aligned_alloc(alignment, size);
 }
 
-external size_t malloc_size(void *addr)        { return hmalloc_malloc_size(addr); }
-external size_t malloc_usable_size(void *addr) { return hmalloc_malloc_size(addr); }
+external inline size_t malloc_size(void *addr)        { return hmalloc_malloc_size(addr); }
+external inline size_t malloc_usable_size(void *addr) { return hmalloc_malloc_size(addr); }
