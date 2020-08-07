@@ -33,7 +33,7 @@ internal void system_info_init(void) {
 }
 
 HMALLOC_ALWAYS_INLINE
-void * get_pages_from_os(u64 n_pages, u64 alignment) {
+internal inline void * get_pages_from_os(u64 n_pages, u64 alignment) {
     void *aligned_start,
          *aligned_end,
          *mem_start,
@@ -84,7 +84,7 @@ void * get_pages_from_os(u64 n_pages, u64 alignment) {
 }
 
 HMALLOC_ALWAYS_INLINE
-void release_pages_to_os(void *addr, u64 n_pages) {
+internal inline void release_pages_to_os(void *addr, u64 n_pages) {
     int err_code;
 
     ASSERT(n_pages > 0, "n_pages is zero");
@@ -97,11 +97,22 @@ void release_pages_to_os(void *addr, u64 n_pages) {
 }
 
 HMALLOC_ALWAYS_INLINE
-pid_t os_get_tid(void) {
+internal inline pid_t os_get_tid(void) {
     pid_t tid;
 
     tid = syscall(SYS_gettid);
     ASSERT(tid != -1, "did not get tid");
 
     return tid;
+}
+
+HMALLOC_ALWAYS_INLINE
+internal inline u32 os_get_num_cpus(void) {
+    u32 nprocs;
+
+    nprocs = get_nprocs();
+    ASSERT(nprocs > 0,                    "get_nprocs() failed");
+    ASSERT(nprocs <= HMALLOC_MAX_THREADS, "HMALLOC_MAX_THREADS exceeded");
+
+    return nprocs;
 }

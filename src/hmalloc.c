@@ -122,13 +122,11 @@ external inline size_t hmalloc_malloc_size(void *addr) {
     block_header_t *block;
     chunk_header_t *chunk;
 
-    if (unlikely(addr == NULL)) {
-        return 0;
-    }
+    if (unlikely(addr == NULL)) { return 0; }
 
     block = ADDR_PARENT_BLOCK(addr);
 
-    if (likely(block->block_kind == BLOCK_KIND_CBLOCK)) {
+    if (block->block_kind == BLOCK_KIND_CBLOCK) {
         chunk = CHUNK_FROM_USER_MEM(addr);
 
         if (unlikely(chunk->flags & CHUNK_IS_BIG)) {
@@ -142,7 +140,7 @@ external inline size_t hmalloc_malloc_size(void *addr) {
     }
 #ifdef HMALLOC_USE_SBLOCKS
     else if (likely(block->block_kind == BLOCK_KIND_SBLOCK)) {
-        return SBLOCK_CLASS_MAX(block->s.size_class);
+        return block->s.size_class;
     }
 #endif
 

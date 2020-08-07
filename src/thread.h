@@ -17,7 +17,6 @@
  *                                                -- Brandon
  */
 
-/* MUST be a multiple of 64. */
 #ifndef HMALLOC_MAX_THREADS
 #define HMALLOC_MAX_THREADS (1024ULL)
 #endif
@@ -38,9 +37,7 @@ typedef struct {
     heap_t        heap;
     hm_tid_t      tid;
     int           is_valid;
-    int           is_owned;
     u64           id;
-    pthread_key_t junk_key;
 } thread_data_t;
 
 

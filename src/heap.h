@@ -22,6 +22,13 @@ typedef union {
     u64 __header;
 } chunk_header_t;
 
+
+#ifdef HMALLOC_USE_SBLOCKS
+#define CHUNK_MIN_SIZE (SBLOCK_MAX_ALLOC_SIZE + 1ULL)
+#else
+#define CHUNK_MIN_SIZE (8)
+#endif /* HMALLOC_USE_SBLOCKS */
+
 #define MAX_SMALL_CHUNK  (DEFAULT_BLOCK_SIZE - sizeof(block_header_t) - sizeof(chunk_header_t))
 
 typedef struct cblock_header {
@@ -32,15 +39,17 @@ typedef struct cblock_header {
     void                 *end;
 } cblock_header_t;
 
+
 #ifdef HMALLOC_USE_SBLOCKS
 
 typedef struct sblock_header {
     struct sblock_header *prev;
     struct sblock_header *next;
     void                 *end;
-    void                 *known_free_slot;
+    u64                   regions_bitfield;
+    u64                   slots_bitfields[64];
     u32                   n_allocations;
-    u32                   max_allocs;
+    u32                   max_allocations;
     u32                   size_class_idx;
     u32                   size_class;
     u32                   log2_size_class;
@@ -60,6 +69,9 @@ typedef struct {
 } heap__meta_t;
 
 
+#define BLOCK_KIND_CBLOCK (0x1)
+#define BLOCK_KIND_SBLOCK (0x2)
+
 typedef struct {
     union {
         cblock_header_t c;
@@ -73,8 +85,7 @@ typedef struct {
 } block_header_t;
 
 
-#define BLOCK_KIND_CBLOCK (0x1)
-#define BLOCK_KIND_SBLOCK (0x2)
+
 
 #ifdef HMALLOC_USE_SBLOCKS
 #define SBLOCK_N_SIZE_CLASSES (9)
@@ -87,8 +98,6 @@ typedef struct {
 
 #define SBLOCK_SMALLEST_CLASS (SBLOCK_CLASS_MICRO)
 #define SBLOCK_LARGEST_CLASS  (SBLOCK_CLASS_PAGE)
-
-#define SBLOCK_CLASS_MAX(c)   ((c) - 1ULL)
 
 #define SBLOCK_CLASS_MICRO_LOG2  (LOG2_64BIT(SBLOCK_CLASS_MICRO))
 #define SBLOCK_CLASS_SMALL_LOG2  (LOG2_64BIT(SBLOCK_CLASS_SMALL))
@@ -104,13 +113,11 @@ internal u64 _sblock_log2_lookup[] = {
     SBLOCK_CLASS_PAGE_LOG2,
 };
 
-#define SBLOCK_CLASS_MICRO_BLOCK_SIZE  (KB(256))
-#define SBLOCK_CLASS_SMALL_BLOCK_SIZE  (KB(512))
-#define SBLOCK_CLASS_MEDIUM_BLOCK_SIZE (MB(1))
-#define SBLOCK_CLASS_LARGE_BLOCK_SIZE  (MB(2))
-#define SBLOCK_CLASS_PAGE_BLOCK_SIZE   (MB(4))
-
-
+#define SBLOCK_CLASS_MICRO_BLOCK_SIZE  (4096ULL * SBLOCK_CLASS_MICRO)
+#define SBLOCK_CLASS_SMALL_BLOCK_SIZE  (4096ULL * SBLOCK_CLASS_SMALL)
+#define SBLOCK_CLASS_MEDIUM_BLOCK_SIZE (4096ULL * SBLOCK_CLASS_MEDIUM)
+#define SBLOCK_CLASS_LARGE_BLOCK_SIZE  (4096ULL * SBLOCK_CLASS_LARGE)
+#define SBLOCK_CLASS_PAGE_BLOCK_SIZE   (DEFAULT_BLOCK_SIZE)
 
 internal u64 _sblock_block_size_lookup[] = {
     SBLOCK_CLASS_MICRO_BLOCK_SIZE,
@@ -120,35 +127,24 @@ internal u64 _sblock_block_size_lookup[] = {
     SBLOCK_CLASS_PAGE_BLOCK_SIZE,
 };
 
-#define SBLOCK_RESERVED (ALIGN(sizeof(block_header_t), SBLOCK_SMALLEST_CLASS))
+#define SBLOCK_CLASS_MICRO_RESERVED_SLOTS  (4096ULL >> SBLOCK_CLASS_MICRO_LOG2)
+#define SBLOCK_CLASS_SMALL_RESERVED_SLOTS  (4096ULL >> SBLOCK_CLASS_SMALL_LOG2)
+#define SBLOCK_CLASS_MEDIUM_RESERVED_SLOTS (4096ULL >> SBLOCK_CLASS_MEDIUM_LOG2)
+#define SBLOCK_CLASS_LARGE_RESERVED_SLOTS  (4096ULL >> SBLOCK_CLASS_LARGE_LOG2)
+#define SBLOCK_CLASS_PAGE_RESERVED_SLOTS   (4096ULL >> SBLOCK_CLASS_PAGE_LOG2)
 
-
-#define SBLOCK_CLASS_MICRO_MAX_ALLOCS                              \
-    ((SBLOCK_CLASS_MICRO_BLOCK_SIZE  - SBLOCK_RESERVED) / SBLOCK_CLASS_MICRO)
-
-#define SBLOCK_CLASS_SMALL_MAX_ALLOCS                              \
-    ((SBLOCK_CLASS_SMALL_BLOCK_SIZE  - SBLOCK_RESERVED) / SBLOCK_CLASS_SMALL)
-
-#define SBLOCK_CLASS_MEDIUM_MAX_ALLOCS                             \
-    ((SBLOCK_CLASS_MEDIUM_BLOCK_SIZE - SBLOCK_RESERVED) / SBLOCK_CLASS_MEDIUM)
-
-#define SBLOCK_CLASS_LARGE_MAX_ALLOCS                              \
-    ((SBLOCK_CLASS_LARGE_BLOCK_SIZE  - SBLOCK_RESERVED) / SBLOCK_CLASS_LARGE)
-
-#define SBLOCK_CLASS_PAGE_MAX_ALLOCS                               \
-    ((SBLOCK_CLASS_PAGE_BLOCK_SIZE   - SBLOCK_RESERVED) / SBLOCK_CLASS_PAGE)
-
-internal u32 _sblock_max_alloc_lookup[] = {
-    SBLOCK_CLASS_MICRO_MAX_ALLOCS,
-    SBLOCK_CLASS_SMALL_MAX_ALLOCS,
-    SBLOCK_CLASS_MEDIUM_MAX_ALLOCS,
-    SBLOCK_CLASS_LARGE_MAX_ALLOCS,
-    SBLOCK_CLASS_PAGE_MAX_ALLOCS,
+internal u64 _sblock_reserved_slots_lookup[] = {
+    SBLOCK_CLASS_MICRO_RESERVED_SLOTS,
+    SBLOCK_CLASS_SMALL_RESERVED_SLOTS,
+    SBLOCK_CLASS_MEDIUM_RESERVED_SLOTS,
+    SBLOCK_CLASS_LARGE_RESERVED_SLOTS,
+    SBLOCK_CLASS_PAGE_RESERVED_SLOTS,
 };
 
-#define SBLOCK_MAX_ALLOC_SIZE (SBLOCK_CLASS_MAX(SBLOCK_LARGEST_CLASS))
+#define SBLOCK_MAX_ALLOC_SIZE (SBLOCK_LARGEST_CLASS)
 
 #endif /* HMALLOC_USE_SBLOCKS */
+
 
 
 #define ADDR_PARENT_BLOCK(addr) \
@@ -217,13 +213,6 @@ internal u32 _sblock_max_alloc_lookup[] = {
     (((N) << system_info.log_2_page_size) - sizeof(block_header_t) - sizeof(chunk_header_t))
 
 
-#ifdef HMALLOC_USE_SBLOCKS
-#define CHUNK_MIN_SIZE (SBLOCK_MAX_ALLOC_SIZE + 1ULL)
-#else
-#define CHUNK_MIN_SIZE (8)
-#endif /* HMALLOC_USE_SBLOCKS */
-
-
 #define HEAP_THREAD (0x1)
 #define HEAP_USER   (0x2)
 
@@ -244,21 +233,21 @@ typedef struct {
     sblock_header_t    *sblocks_heads[SBLOCK_N_SIZE_CLASSES],
                        *sblocks_tails[SBLOCK_N_SIZE_CLASSES];
 #endif
-    heap__meta_t      __meta;
+    heap__meta_t        __meta;
 } heap_t;
 
 internal void heap_make(heap_t *heap);
 internal void * heap_alloc(heap_t *heap, u64 n_bytes);
 
-#define HEAP_CLOCK_INIT(heap_ptr)   CAT2(LOCK_KIND_PREFIX, _init)(&heap_ptr->c_lock)
-#define HEAP_CLOCK(heap_ptr)        CAT2(LOCK_KIND_PREFIX, _lock)(&heap_ptr->c_lock)
-#define HEAP_CUNLOCK(heap_ptr)      CAT2(LOCK_KIND_PREFIX, _unlock)(&heap_ptr->c_lock)
-
+#define HEAP_C_LOCK_INIT(heap_ptr)      CAT2(LOCK_KIND_PREFIX, _init)(&heap_ptr->c_lock)
+#define HEAP_C_LOCK(heap_ptr)           CAT2(LOCK_KIND_PREFIX, _lock)(&heap_ptr->c_lock)
+#define HEAP_C_UNLOCK(heap_ptr)         CAT2(LOCK_KIND_PREFIX, _unlock)(&heap_ptr->c_lock)
 #ifdef HMALLOC_USE_SBLOCKS
-#define HEAP_SLOCK_INIT(heap_ptr, idx) CAT2(LOCK_KIND_PREFIX, _init)(&heap_ptr->s_locks[(idx)])
-#define HEAP_SLOCK(heap_ptr, idx)      CAT2(LOCK_KIND_PREFIX, _lock)(&heap_ptr->s_locks[(idx)])
-#define HEAP_SUNLOCK(heap_ptr, idx)    CAT2(LOCK_KIND_PREFIX, _unlock)(&heap_ptr->s_locks[(idx)])
+#define HEAP_S_LOCK_INIT(heap_ptr, idx) CAT2(LOCK_KIND_PREFIX, _init)(&heap_ptr->s_locks[(idx)])
+#define HEAP_S_LOCK(heap_ptr, idx)      CAT2(LOCK_KIND_PREFIX, _lock)(&heap_ptr->s_locks[(idx)])
+#define HEAP_S_UNLOCK(heap_ptr, idx)    CAT2(LOCK_KIND_PREFIX, _unlock)(&heap_ptr->s_locks[(idx)])
 #endif
+
 
 typedef char *heap_handle_t;
 

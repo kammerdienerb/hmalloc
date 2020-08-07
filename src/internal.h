@@ -10,12 +10,13 @@
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <pthread.h>
+#include <sys/sysinfo.h>
 
 
 #define HMALLOC_ANSI_C
 /* #define HMALLOC_DO_LOGGING */
 /* #define HMALLOC_DO_ASSERTIONS */
-/* #define HMALLOC_USE_SBLOCKS */
+#define HMALLOC_USE_SBLOCKS
 
 #define EXPAND(a) a
 #define CAT2(x, y) _CAT2(x, y)
@@ -44,9 +45,9 @@
 #define external extern
 
 #ifdef HMALLOC_DEBUG
-#define HMALLOC_ALWAYS_INLINE static
+#define HMALLOC_ALWAYS_INLINE
 #else
-#define HMALLOC_ALWAYS_INLINE __attribute__((always_inline)) static inline
+#define HMALLOC_ALWAYS_INLINE __attribute__((always_inline))
 #endif /* HMALLOC_DEBUG */
 
 #include "FormatString.h"
