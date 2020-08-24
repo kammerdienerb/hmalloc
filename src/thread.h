@@ -38,6 +38,8 @@ typedef struct {
     hm_tid_t      tid;
     int           is_valid;
     u64           id;
+    u32           ref_count;
+    pthread_key_t key;
 } thread_data_t;
 
 

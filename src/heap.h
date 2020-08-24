@@ -31,13 +31,42 @@ typedef union {
 
 #define MAX_SMALL_CHUNK  (DEFAULT_BLOCK_SIZE - sizeof(block_header_t) - sizeof(chunk_header_t))
 
+struct cblock_list;
+
 typedef struct cblock_header {
     chunk_header_t       *free_list_head,
                          *free_list_tail;
     struct cblock_header *prev;
     struct cblock_header *next;
     void                 *end;
+    struct cblock_list   *list;
 } cblock_header_t;
+
+
+typedef struct cblock_list {
+    cblock_header_t *head;
+    cblock_header_t *tail;
+    spin_t           lock;
+} cblock_list_t;
+
+
+#define LIST_LOCK_INIT(l) spin_init(&(l)->lock)
+#define LIST_LOCK(l)      spin_lock(&(l)->lock)
+#define LIST_UNLOCK(l)    spin_unlock(&(l)->lock)
+
+
+#define N_SIZE_CLASSES (6)
+
+#define CLASS_MICRO    (16ULL)
+#define CLASS_SMALL    (64ULL)
+#define CLASS_MEDIUM   (256ULL)
+#define CLASS_LARGE    (1024ULL)
+#define CLASS_PAGE     (4096ULL)
+#define CLASS_HUGE     (16384ULL)
+
+#define SMALLEST_CLASS (CLASS_MICRO)
+#define LARGEST_CLASS  (CLASS_HUGE)
+
 
 
 #ifdef HMALLOC_USE_SBLOCKS
@@ -88,7 +117,7 @@ typedef struct {
 
 
 #ifdef HMALLOC_USE_SBLOCKS
-#define SBLOCK_N_SIZE_CLASSES (9)
+#define SBLOCK_N_SIZE_CLASSES (5)
 
 #define SBLOCK_CLASS_MICRO  (16ULL)
 #define SBLOCK_CLASS_SMALL  (64ULL)
@@ -218,17 +247,15 @@ internal u64 _sblock_reserved_slots_lookup[] = {
 
 internal u32 hid_counter;
 
-#define LOCK_KIND_PREFIX spin
+#define LOCK_KIND_PREFIX rw_lock
 
 #define LOCK_KIND_TYPE   CAT2(LOCK_KIND_PREFIX, _t)
 typedef LOCK_KIND_TYPE   heap_lock_t;
 
 typedef struct {
-    heap_lock_t         c_lock;
-    cblock_header_t    *cblocks_head,
-                       *cblocks_tail;
+    cblock_list_t       lists[N_SIZE_CLASSES];
 #ifdef HMALLOC_USE_SBLOCKS
-    heap_lock_t         s_locks[SBLOCK_N_SIZE_CLASSES];
+    spin_t              s_locks[SBLOCK_N_SIZE_CLASSES];
     u32                 n_sblocks[SBLOCK_N_SIZE_CLASSES];
     sblock_header_t    *sblocks_heads[SBLOCK_N_SIZE_CLASSES],
                        *sblocks_tails[SBLOCK_N_SIZE_CLASSES];
@@ -240,12 +267,14 @@ internal void heap_make(heap_t *heap);
 internal void * heap_alloc(heap_t *heap, u64 n_bytes);
 
 #define HEAP_C_LOCK_INIT(heap_ptr)      CAT2(LOCK_KIND_PREFIX, _init)(&heap_ptr->c_lock)
-#define HEAP_C_LOCK(heap_ptr)           CAT2(LOCK_KIND_PREFIX, _lock)(&heap_ptr->c_lock)
+#define HEAP_C_RLOCK(heap_ptr)          CAT2(LOCK_KIND_PREFIX, _rlock)(&heap_ptr->c_lock)
+#define HEAP_C_WLOCK(heap_ptr)          CAT2(LOCK_KIND_PREFIX, _wlock)(&heap_ptr->c_lock)
 #define HEAP_C_UNLOCK(heap_ptr)         CAT2(LOCK_KIND_PREFIX, _unlock)(&heap_ptr->c_lock)
+
 #ifdef HMALLOC_USE_SBLOCKS
-#define HEAP_S_LOCK_INIT(heap_ptr, idx) CAT2(LOCK_KIND_PREFIX, _init)(&heap_ptr->s_locks[(idx)])
-#define HEAP_S_LOCK(heap_ptr, idx)      CAT2(LOCK_KIND_PREFIX, _lock)(&heap_ptr->s_locks[(idx)])
-#define HEAP_S_UNLOCK(heap_ptr, idx)    CAT2(LOCK_KIND_PREFIX, _unlock)(&heap_ptr->s_locks[(idx)])
+#define HEAP_S_LOCK_INIT(heap_ptr, idx) spin_init(&heap_ptr->s_locks[(idx)])
+#define HEAP_S_LOCK(heap_ptr, idx)      spin_lock(&heap_ptr->s_locks[(idx)])
+#define HEAP_S_UNLOCK(heap_ptr, idx)    spin_unlock(&heap_ptr->s_locks[(idx)])
 #endif
 
 

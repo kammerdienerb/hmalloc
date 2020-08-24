@@ -8,11 +8,11 @@ CFG_REL3=-march=native -O3
 CFG_REL_LOG=-march=native -O3 -DHMALLOC_DO_LOGGING
 
 # CFG=$(CFG_DEB1)
-CFG=$(CFG_DEB2)
+# CFG=$(CFG_DEB2)
 # CFG=$(CFG_DEB3)
 # CFG=$(CFG_DEB4)
 # CFG=$(CFG_REL1)
-# CFG=$(CFG_REL2)
+CFG=$(CFG_REL2)
 # CFG=$(CFG_REL3)
 # CFG=$(CFG_REL_LOG)
 

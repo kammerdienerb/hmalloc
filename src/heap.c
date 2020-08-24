@@ -8,6 +8,12 @@
 #include <pthread.h>
 
 HMALLOC_ALWAYS_INLINE
+internal inline void cblock_list_make(cblock_list_t *list) {
+    list->head = list->tail = NULL;
+    LIST_LOCK_INIT(list);
+}
+
+HMALLOC_ALWAYS_INLINE
 internal inline cblock_header_t * heap_new_aligned_cblock(heap_t *heap, u64 n_bytes, u64 alignment) {
     u64              n_pages;
     u64              avail;
@@ -58,12 +64,12 @@ internal inline cblock_header_t * heap_new_cblock(heap_t *heap, u64 n_bytes) {
 }
 
 HMALLOC_ALWAYS_INLINE
-internal inline void heap_remove_cblock(heap_t *heap, cblock_header_t *cblock) {
-    if (cblock == heap->cblocks_head) {
-        heap->cblocks_head = cblock->next;
+internal inline void cblock_list_remove_cblock(cblock_list_t *list, cblock_header_t *cblock) {
+    if (cblock == list->head) {
+        list->head = cblock->next;
     }
-    if (cblock == heap->cblocks_tail) {
-        heap->cblocks_tail = cblock->prev;
+    if (cblock == list->tail) {
+        list->tail = cblock->prev;
     }
     if (cblock->prev) {
         cblock->prev->next = cblock->next;
@@ -79,19 +85,20 @@ internal inline void release_cblock(cblock_header_t *cblock) {
 }
 
 HMALLOC_ALWAYS_INLINE
-internal inline void heap_add_cblock(heap_t *heap, cblock_header_t *cblock) {
+internal inline void cblock_list_add_cblock(cblock_list_t *list, cblock_header_t *cblock) {
     ASSERT(cblock->end - (void*)cblock == DEFAULT_BLOCK_SIZE,
            "cblock has incorrect size for this list");
 
-    if (heap->cblocks_head == NULL) {
-        ASSERT(heap->cblocks_tail == NULL,
-               "cblock tail but no cblock head");
-        heap->cblocks_head = heap->cblocks_tail = cblock;
+    if (list->head == NULL) {
+        ASSERT(list->tail == NULL, "cblock tail but no cblock head");
+        list->head = list->tail = cblock;
     } else {
-        heap->cblocks_tail->next = cblock;
-        cblock->prev             = heap->cblocks_tail;
-        heap->cblocks_tail       = cblock;
+        list->tail->next = cblock;
+        cblock->prev     = list->tail;
+        list->tail       = cblock;
     }
+
+    cblock->list = list;
 }
 
 
@@ -204,8 +211,9 @@ HMALLOC_ALWAYS_INLINE
 internal inline void heap_make(heap_t *heap) {
     int i;
 
-    heap->cblocks_head = heap->cblocks_tail = NULL;
-    HEAP_C_LOCK_INIT(heap);
+    for (i = 0; i < N_SIZE_CLASSES; i += 1) {
+        cblock_list_make(&heap->lists[i]);
+    }
 
 #ifdef HMALLOC_USE_SBLOCKS
     for (i = 0; i < SBLOCK_N_SIZE_CLASSES; i += 1) {
@@ -228,7 +236,7 @@ internal inline void heap_make(heap_t *heap) {
 }
 
 HMALLOC_ALWAYS_INLINE
-internal inline void coalesce_left_to_right(cblock_header_t *cblock, chunk_header_t *left, chunk_header_t *right) {
+internal inline void cblock_coalesce_left_to_right(cblock_header_t *cblock, chunk_header_t *left, chunk_header_t *right) {
     ASSERT(right == SMALL_CHUNK_ADJACENT(left), "can't coalesce non-adjacent chunks");
 
     SET_CHUNK_SIZE(left,
@@ -236,7 +244,7 @@ internal inline void coalesce_left_to_right(cblock_header_t *cblock, chunk_heade
 }
 
 HMALLOC_ALWAYS_INLINE
-internal inline void coalesce_right_to_left(cblock_header_t *cblock, chunk_header_t *left, chunk_header_t *right) {
+internal inline void cblock_coalesce_right_to_left(cblock_header_t *cblock, chunk_header_t *left, chunk_header_t *right) {
     u64             distance;
     chunk_header_t *next_free_chunk;
     chunk_header_t *prev_free_chunk;
@@ -352,7 +360,7 @@ internal inline void cblock_add_chunk_to_free_list(cblock_header_t *cblock, chun
 
         /* Can we coalesce with the next chunk? */
         if (SMALL_CHUNK_ADJACENT(chunk) == cblock->free_list_head) {
-            coalesce_right_to_left(cblock, chunk, cblock->free_list_head);
+            cblock_coalesce_right_to_left(cblock, chunk, cblock->free_list_head);
         } else {
             distance = CHUNK_DISTANCE(cblock->free_list_head, chunk);
             SET_CHUNK_OFFSET_PREV(cblock->free_list_head, distance);
@@ -366,7 +374,7 @@ internal inline void cblock_add_chunk_to_free_list(cblock_header_t *cblock, chun
 
         /* Can we coalesce with the previous chunk? */
         if (SMALL_CHUNK_ADJACENT(cblock->free_list_tail) == chunk) {
-            coalesce_left_to_right(cblock, cblock->free_list_tail, chunk);
+            cblock_coalesce_left_to_right(cblock, cblock->free_list_tail, chunk);
         } else {
             distance = CHUNK_DISTANCE(chunk, cblock->free_list_tail);
             SET_CHUNK_OFFSET_PREV(chunk,                  distance);
@@ -383,12 +391,12 @@ internal inline void cblock_add_chunk_to_free_list(cblock_header_t *cblock, chun
         ASSERT(SMALL_CHUNK_ADJACENT(chunk) != cblock->end,
                "can't coalesce_right_to_left with last chunk");
 
-        coalesce_right_to_left(cblock, chunk, SMALL_CHUNK_ADJACENT(chunk));
+        cblock_coalesce_right_to_left(cblock, chunk, SMALL_CHUNK_ADJACENT(chunk));
         if (CHUNK_HAS_PREV(chunk)) {
             prev_free_chunk = CHUNK_PREV_UNCHECKED(chunk);
             if (SMALL_CHUNK_ADJACENT(prev_free_chunk) == chunk) {
                 cblock_remove_chunk_from_free_list(cblock, chunk);
-                coalesce_left_to_right(cblock, prev_free_chunk, chunk);
+                cblock_coalesce_left_to_right(cblock, prev_free_chunk, chunk);
             }
         }
     } else {
@@ -415,7 +423,7 @@ internal inline void cblock_add_chunk_to_free_list(cblock_header_t *cblock, chun
 
         /* Patch with previous chunk. */
         if (SMALL_CHUNK_ADJACENT(free_list_cursor) == chunk) {
-            coalesce_left_to_right(cblock, free_list_cursor, chunk);
+            cblock_coalesce_left_to_right(cblock, free_list_cursor, chunk);
             chunk = free_list_cursor;
         } else {
             distance = CHUNK_DISTANCE(chunk, free_list_cursor);
@@ -427,9 +435,9 @@ internal inline void cblock_add_chunk_to_free_list(cblock_header_t *cblock, chun
         if (SMALL_CHUNK_ADJACENT(chunk) == next_free_chunk) {
             if (chunk == free_list_cursor) {
                 cblock_remove_chunk_from_free_list(cblock, next_free_chunk);
-                coalesce_left_to_right(cblock, chunk, next_free_chunk);
+                cblock_coalesce_left_to_right(cblock, chunk, next_free_chunk);
             } else {
-                coalesce_right_to_left(cblock, chunk, next_free_chunk);
+                cblock_coalesce_right_to_left(cblock, chunk, next_free_chunk);
             }
         } else {
             distance = CHUNK_DISTANCE(next_free_chunk, chunk);
@@ -503,11 +511,8 @@ internal inline void cblock_split_chunk_and_replace_on_free_list(cblock_header_t
 }
 
 
-
 HMALLOC_ALWAYS_INLINE
-internal inline chunk_header_t * heap_get_chunk_from_cblock_if_free(heap_t *heap,
-                                                            cblock_header_t *cblock,
-                                                            u64 n_bytes) {
+internal inline chunk_header_t * cblock_get_chunk_if_free(cblock_header_t *cblock, u64 n_bytes) {
     chunk_header_t *chunk;
     chunk_header_t *prev_chunk;
     int             has_next;
@@ -522,6 +527,12 @@ internal inline chunk_header_t * heap_get_chunk_from_cblock_if_free(heap_t *heap
            "trying to get a chunk from a cblock dedicated to a single big chunk");
 #endif
 
+    if (cblock->free_list_head == NULL) {
+        ASSERT(cblock->free_list_tail == NULL,
+               "head, but no tail");
+        return NULL;
+    }
+
     prev_chunk = NULL;
     has_next   = 1;
 
@@ -535,9 +546,9 @@ internal inline chunk_header_t * heap_get_chunk_from_cblock_if_free(heap_t *heap
         prev_chunk = chunk;
     }
 
-    /* Check the tail. Might be NULL if the list is empty. */
+    /* Check the tail. */
     ASSERT(chunk == cblock->free_list_tail, "last chunk isn't tail");
-    if (chunk && ((chunk_size = CHUNK_SIZE(chunk)) >= n_bytes)) {
+    if ((chunk_size = CHUNK_SIZE(chunk)) >= n_bytes) {
         has_next = 0;
         goto found;
     }
@@ -560,7 +571,49 @@ found:;
     return chunk;
 }
 
+HMALLOC_ALWAYS_INLINE
+internal inline void * heap_alloc_from_cblock_list(heap_t *heap, cblock_list_t *list, u64 n_bytes) {
+    chunk_header_t  *chunk;
+    cblock_header_t *cblock;
+    void            *mem;
 
+    chunk = NULL;
+
+    LIST_LOCK(list);
+
+    cblock = list->head;
+
+    while (cblock != NULL) {
+        chunk = cblock_get_chunk_if_free(cblock, n_bytes);
+
+        if (chunk != NULL) {
+/*             spin_unlock(&list->lock); */
+            goto found;
+        }
+
+        cblock = cblock->next;
+    }
+
+    /*
+     * We've gone through all of the cblocks and haven't found a
+     * big enough chunk.
+     * So, we'll have to add a new cblock.
+     */
+    cblock = heap_new_cblock(heap, n_bytes);
+    cblock_list_add_cblock(list, cblock);
+    chunk = cblock_get_chunk_if_free(cblock, n_bytes);
+
+found:;
+    spin_unlock(&list->lock);
+
+    ASSERT(chunk != NULL, "invalid chunk -- could not allocate memory");
+
+    mem = CHUNK_USER_MEM(chunk);
+
+    ASSERT(IS_ALIGNED(mem, 8), "user memory is not properly aligned for performance");
+
+    return mem;
+}
 
 
 #ifdef HMALLOC_USE_SBLOCKS
@@ -687,11 +740,9 @@ internal inline void * heap_big_alloc(heap_t *heap, u64 n_bytes) {
 
 HMALLOC_ALWAYS_INLINE
 internal inline void * heap_alloc(heap_t *heap, u64 n_bytes) {
-    cblock_header_t *cblock;
-    chunk_header_t  *chunk;
-    void            *mem;
-    u64              size_class;
-    u32              size_class_idx;
+    void *mem;
+    u64   size_class;
+    u32   size_class_idx;
 
 #ifdef HMALLOC_USE_SBLOCKS
     /*
@@ -751,33 +802,19 @@ internal inline void * heap_alloc(heap_t *heap, u64 n_bytes) {
         goto out;
     }
 
-    chunk = NULL;
 
-    HEAP_C_LOCK(heap); {
-        cblock = heap->cblocks_head;
+    size_class     = SMALLEST_CLASS;
+    size_class_idx = 0;
+    while (n_bytes > size_class) {
+        size_class     <<= 2;
+        size_class_idx  += 1;
 
-        while (cblock != NULL) {
-            chunk = heap_get_chunk_from_cblock_if_free(heap, cblock, n_bytes);
-
-            if (chunk != NULL)    { goto found; }
-
-            cblock = cblock->next;
+        if (size_class == LARGEST_CLASS) {
+            break;
         }
+    }
 
-        /*
-         * We've gone through all of the cblocks and haven't found a
-         * big enough chunk.
-         * So, we'll have to add a new cblock.
-         */
-        cblock = heap_new_cblock(heap, n_bytes);
-        heap_add_cblock(heap, cblock);
-        chunk = heap_get_chunk_from_cblock_if_free(heap, cblock, n_bytes);
-
-found:;
-        ASSERT(chunk != NULL, "invalid chunk -- could not allocate memory");
-    } HEAP_C_UNLOCK(heap);
-
-    mem = CHUNK_USER_MEM(chunk);
+    mem = heap_alloc_from_cblock_list(heap, &heap->lists[size_class_idx], n_bytes);
 
 out:;
     ASSERT(IS_ALIGNED(mem, 8), "user memory is not properly aligned for performance");
@@ -785,73 +822,21 @@ out:;
     return mem;
 }
 
-#if 0
 HMALLOC_ALWAYS_INLINE
-internal inline chunk_header_t * coalesce_free_chunk_back(cblock_header_t *cblock, chunk_header_t *chunk) {
-    chunk_header_t *prev_free_chunk,
-                   *next_free_chunk,
-                   *new_chunk;
-    u64             distance;
+internal inline void cblock_free_chunk(cblock_header_t *cblock, chunk_header_t *chunk) {
+    cblock_list_t *list;
 
-    new_chunk = chunk;
-
-    if (!CHUNK_HAS_PREV(chunk)) { goto done; }
-
-    prev_free_chunk = CHUNK_PREV_UNCHECKED(chunk);
-
-    if (SMALL_CHUNK_ADJACENT(prev_free_chunk) == chunk) {
-
-        ASSERT(prev_free_chunk->flags & CHUNK_IS_FREE, "can't coalesce a chunk that isn't free");
-
-        SET_CHUNK_SIZE(prev_free_chunk,
-            CHUNK_SIZE(prev_free_chunk) + sizeof(chunk_header_t) + CHUNK_SIZE(chunk));
-
-        if (CHUNK_HAS_NEXT(chunk)) {
-            next_free_chunk = CHUNK_NEXT_UNCHECKED(chunk);
-            ASSERT(next_free_chunk->flags & CHUNK_IS_FREE, "next chunk in free list isn't free");
-            ASSERT(next_free_chunk > prev_free_chunk, "bad distance");
-            distance = CHUNK_DISTANCE(next_free_chunk, prev_free_chunk);
-            SET_CHUNK_OFFSET_NEXT(prev_free_chunk, distance);
-            SET_CHUNK_OFFSET_PREV(next_free_chunk, distance);
-        } else {
-            ASSERT(chunk == cblock->free_list_tail, "chunk has no next, but isn't tail");
-            SET_CHUNK_OFFSET_NEXT(prev_free_chunk, 0);
-            cblock->free_list_tail = prev_free_chunk;
-        }
-
-        new_chunk = prev_free_chunk;
-    }
-
-done:;
-    return new_chunk;
-}
-
-HMALLOC_ALWAYS_INLINE
-internal inline void coalesce_free_chunk(cblock_header_t *cblock, chunk_header_t *chunk) {
-    chunk_header_t *new_chunk;
-    chunk_header_t *next_free_chunk;
-
-    ASSERT(chunk->flags & CHUNK_IS_FREE, "can't coalesce a chunk that isn't free");
-
-    new_chunk = coalesce_free_chunk_back(cblock, chunk);
-
-    next_free_chunk = CHUNK_NEXT(new_chunk);
-
-    if (next_free_chunk == SMALL_CHUNK_ADJACENT(new_chunk)) {
-        coalesce_free_chunk_back(cblock, next_free_chunk);
-    }
-}
-#endif
-
-HMALLOC_ALWAYS_INLINE
-internal inline void heap_free_from_cblock(heap_t *heap, cblock_header_t *cblock, chunk_header_t *chunk) {
     ASSERT(!(chunk->flags & CHUNK_IS_FREE), "double free error");
 
 /*     chunk->flags |= CHUNK_IS_FREE; */
     chunk->flags = CHUNK_IS_FREE;
 
+    list = cblock->list;
+    spin_lock(&list->lock);
+
+/*     spin_lock(&cblock->lock); */
     cblock_add_chunk_to_free_list(cblock, chunk);
-/*     coalesce_free_chunk(cblock, chunk); */
+/*     spin_unlock(&cblock->lock); */
 
 #define WHOLE_BLOCK_CHUNK_SIZE (DEFAULT_BLOCK_SIZE - sizeof(chunk_header_t) - sizeof(block_header_t))
 
@@ -860,14 +845,15 @@ internal inline void heap_free_from_cblock(heap_t *heap, cblock_header_t *cblock
         /* and if that chunk spans the whole cblock -- release it. */
         if (CHUNK_SIZE(cblock->free_list_head) == WHOLE_BLOCK_CHUNK_SIZE) {
             /* If this cblock isn't the only cblock in the heap... */
-            if (cblock != heap->cblocks_head || cblock != heap->cblocks_tail) {
-                heap_remove_cblock(heap, cblock);
+            if (cblock != list->head || cblock != list->tail) {
+                cblock_list_remove_cblock(list, cblock);
                 release_cblock(cblock);
             }
         }
     }
-#undef WHOLE_BLOCK_CHUNK_SIZE
 
+    spin_unlock(&list->lock);
+#undef WHOLE_BLOCK_CHUNK_SIZE
 }
 
 
@@ -933,9 +919,7 @@ internal inline void heap_free(heap_t *heap, void *addr) {
         if (unlikely(chunk->flags & CHUNK_IS_BIG)) {
             heap_free_big_chunk(heap, chunk);
         } else {
-            HEAP_C_LOCK(heap); {
-                heap_free_from_cblock(heap, &block->c, chunk);
-            } HEAP_C_UNLOCK(heap);
+            cblock_free_chunk(&block->c, chunk);
         }
     }
 }
@@ -945,23 +929,16 @@ internal inline void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t a
     u64              sblock_n_bytes;
     u64              size_class;
     u32              size_class_idx;
-    cblock_header_t *cblock;
-    block_header_t  *block;
-    chunk_header_t  *first_chunk,
-                    *first_chunk_check,
-                    *chunk_with_aligned_mem,
-                    *chunk;
     void            *mem,
                     *aligned_addr;
-    u64              new_cblock_size_request,
-                     first_chunk_size;
 
     ASSERT(alignment > 0, "invalid alignment -- must be > 0");
     ASSERT(IS_POWER_OF_TWO(alignment), "invalid alignment -- must be a power of two");
 
     if (n_bytes < 8) { n_bytes = 8; }
 
-    mem = NULL;
+    mem          = NULL;
+    aligned_addr = NULL;
 
     /*
      * All allocations are guaranteed to be aligned on 8 byte
@@ -1000,77 +977,11 @@ internal inline void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t a
     (void)size_class;
     (void)size_class_idx;
     (void)sblock_n_bytes;
+    (void)aligned_addr;
 
-    /*
-     * If size is big:
-     * Use the regular big chunk procedure to get memory, but
-     * force the big chunk to have its chunk_header_t in the right place.
-     * free() won't work correctly if we don't do this.
-     */
-    if (n_bytes + alignment > MAX_SMALL_CHUNK) {
-        chunk = heap_get_big_chunk(heap, n_bytes + alignment);
-        mem   = ALIGN(CHUNK_USER_MEM(chunk), alignment);
-        memcpy(mem - sizeof(chunk_header_t), chunk, sizeof(chunk_header_t));
-        return mem;
-    }
+    ASSERT(0, "redo this");
 
-    HEAP_C_LOCK(heap); {
-        new_cblock_size_request =   n_bytes                                /* The bytes we need to give the user.        */
-                                + alignment                                /* Make sure there's space to align.          */
-                                + sizeof(chunk_header_t) + CHUNK_MIN_SIZE; /* We're going to put another chunk in there. */
-
-        new_cblock_size_request = LARGEST_CHUNK_IN_EMPTY_N_PAGE_BLOCK(
-                                    ALIGN(MAX(new_cblock_size_request, DEFAULT_BLOCK_SIZE),
-                                          system_info.page_size)
-                                    >> system_info.log_2_page_size);
-
-        ASSERT(new_cblock_size_request < DEFAULT_BLOCK_SIZE, "cblock for aligned chunk is too big");
-
-        cblock = heap_new_cblock(heap, new_cblock_size_request);
-        block  = (block_header_t*)cblock;
-        heap_add_cblock(heap, cblock);
-
-        first_chunk_check = ((void*)block) + sizeof(block_header_t);
-        aligned_addr      = ALIGN(CHUNK_USER_MEM(first_chunk_check), alignment);
-
-        if (aligned_addr == first_chunk_check) {
-            chunk = heap_get_chunk_from_cblock_if_free(heap, cblock, n_bytes);
-
-            ASSERT(first_chunk_check == chunk, "first chunk mismatch");
-
-        } else {
-            aligned_addr = ALIGN((void*)(first_chunk_check + CHUNK_MIN_SIZE + sizeof(chunk_header_t)),
-                                 alignment);
-
-            chunk_with_aligned_mem = aligned_addr - sizeof(chunk_header_t);
-
-            first_chunk_size = (((void*)chunk_with_aligned_mem) - CHUNK_USER_MEM(first_chunk_check));
-            ASSERT(first_chunk_size >= CHUNK_MIN_SIZE, "first_chunk_size is too small");
-
-            first_chunk = heap_get_chunk_from_cblock_if_free(heap, cblock, first_chunk_size);
-            ASSERT(first_chunk != NULL, "did not get first chunk");
-            ASSERT(first_chunk == first_chunk_check, "wrong first_chunk");
-
-            chunk = heap_get_chunk_from_cblock_if_free(heap, cblock, n_bytes);
-            ASSERT(chunk == chunk_with_aligned_mem, "chunk didn't end up behind the alignmed address");
-            ASSERT(CHUNK_USER_MEM(chunk) + CHUNK_SIZE(chunk) < cblock->end, "aligned chunk extends beyond the cblock");
-
-            if (first_chunk->flags & CHUNK_IS_BIG) {
-                heap_free_big_chunk(heap, first_chunk);
-            } else {
-                heap_free_from_cblock(heap, cblock, first_chunk);
-            }
-
-        }
-
-
-        ASSERT(chunk != NULL, "did not get aligned chunk");
-        ASSERT(aligned_addr < cblock->end, "aligned address is outside of cblock");
-
-        mem = CHUNK_USER_MEM(chunk);
-
-        ASSERT(mem == aligned_addr, "memory acquired from chunk is not the expected aligned address");
-    } HEAP_C_UNLOCK(heap);
+    ASSERT(mem == aligned_addr, "memory acquired from chunk is not the expected aligned address");
 
     return mem;
 }
