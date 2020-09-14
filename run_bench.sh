@@ -9,7 +9,7 @@ function run {
         numfmt --field=2 --from-unit=1024 --to=iec
 }
 
-ALLO="/lib/x86_64-linux-gnu/libc.so.6"
+ALLO="/usr/lib/libc.so.6"
 echo "using allocator $ALLO"
 for i in $(seq 1 3); do
     run $ALLO
@@ -17,15 +17,15 @@ done
 
 echo ""
 
-# ALLO="/usr/lib/x86_64-linux-gnu/libjemalloc.so"
-# echo "using allocator $ALLO"
-# for i in $(seq 1 3); do
-#     run $ALLO
-# done
-#
-# echo ""
+ALLO="/usr/lib/libjemalloc.so"
+echo "using allocator $ALLO"
+for i in $(seq 1 3); do
+    run $ALLO
+done
 
-ALLO="/usr/lib/x86_64-linux-gnu/libtcmalloc.so.4"
+echo ""
+
+ALLO="/usr/lib/libtcmalloc.so"
 echo "using allocator $ALLO"
 for i in $(seq 1 3); do
     run $ALLO

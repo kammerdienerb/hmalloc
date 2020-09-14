@@ -16,7 +16,7 @@
 #define HMALLOC_ANSI_C
 /* #define HMALLOC_DO_LOGGING */
 /* #define HMALLOC_DO_ASSERTIONS */
-/* #define HMALLOC_USE_SBLOCKS */
+#define HMALLOC_USE_SBLOCKS
 
 #define EXPAND(a) a
 #define CAT2(x, y) _CAT2(x, y)
