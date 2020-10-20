@@ -127,9 +127,6 @@ internal u64 _sblock_reserved_slots_lookup[] = {
 #define CHUNK_MIN_SIZE (8)
 #endif /* HMALLOC_USE_SBLOCKS */
 
-/* #define MAX_SMALL_CHUNK  (DEFAULT_BLOCK_SIZE - sizeof(block_header_t) - sizeof(chunk_header_t)) */
-#define MAX_SMALL_CHUNK  (KB(128))
-
 struct cblock_list;
 
 typedef struct cblock_header {
@@ -174,6 +171,7 @@ typedef struct cblock_list {
 #define SMALLEST_CLASS (CLASS_MICRO)
 #define LARGEST_CLASS  (CLASS_HUGE)
 
+#define MAX_SMALL_CHUNK  (DEFAULT_BLOCK_SIZE - sizeof(block_header_t) - sizeof(chunk_header_t))
 
 
 typedef struct {

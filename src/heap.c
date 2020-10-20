@@ -1124,6 +1124,7 @@ internal inline void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t a
     mem = aligned_addr;
 
 out:
+    ASSERT(mem,                        "did not allocate memory in heap_aligned_alloc");
     ASSERT(IS_ALIGNED(mem, alignment), "failed to get aligned memory");
 
     return mem;
