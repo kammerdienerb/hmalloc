@@ -10,13 +10,18 @@ internal pthread_mutex_t hmalloc_init_lock = PTHREAD_MUTEX_INITIALIZER;
 #define INIT_UNLOCK() do { pthread_mutex_unlock(&hmalloc_init_lock); } while (0)
 
 
-#define HMALLOC_SITE_LAYOUT_UNKNOWN (1)
-#define HMALLOC_SITE_LAYOUT_THREAD  (2)
-#define HMALLOC_SITE_LAYOUT_SITE    (3)
+#define HMALLOC_SITE_LAYOUT_UNKNOWN   (0)
+#define HMALLOC_SITE_LAYOUT_THREAD    (1)
+#define HMALLOC_SITE_LAYOUT_SITE      (2)
+
+#define HMALLOC_OBJMAP_MODE_UNKNOWN   (1)
+#define HMALLOC_OBJMAP_MODE_OBJECT    (2)
+#define HMALLOC_OBJMAP_MODE_USER_HEAP (3)
 
 internal int hmalloc_is_initialized = 0;
 internal int hmalloc_ignore_frees   = 0;
 internal int hmalloc_site_layout    = HMALLOC_SITE_LAYOUT_UNKNOWN;
+internal int hmalloc_objmap_mode    = HMALLOC_OBJMAP_MODE_UNKNOWN;
 
 
 internal void hmalloc_init(void);

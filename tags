@@ -1,0 +1,521 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+ADDR_PARENT_BLOCK	src/heap.h	207;"	d
+ALIGN	src/internal.h	102;"	d
+ASSERT	src/internal.h	59;"	d
+ASSERT	src/internal.h	64;"	d
+BLOCK_GET_HEAP_PTR	src/heap.h	210;"	d
+BLOCK_KIND_CBLOCK	src/heap.h	189;"	d
+BLOCK_KIND_SBLOCK	src/heap.h	190;"	d
+CAT2	src/hash_table.h	51;"	d
+CAT2	src/internal.h	22;"	d
+CAT2	src/tree.h	52;"	d
+CAT3	src/hash_table.h	54;"	d
+CAT3	src/tree.h	55;"	d
+CAT4	src/hash_table.h	57;"	d
+CAT4	src/tree.h	58;"	d
+CBLOCK_FIRST_CHUNK	src/heap.h	266;"	d
+CHUNK_DISTANCE	src/heap.h	261;"	d
+CHUNK_FROM_USER_MEM	src/heap.h	259;"	d
+CHUNK_HAS_NEXT	src/heap.h	255;"	d
+CHUNK_HAS_PREV	src/heap.h	254;"	d
+CHUNK_IS_BIG	src/heap.h	11;"	d
+CHUNK_IS_FREE	src/heap.h	10;"	d
+CHUNK_IS_OBJMAP_ENTRY	src/heap.h	12;"	d
+CHUNK_MIN_SIZE	src/heap.h	126;"	d
+CHUNK_MIN_SIZE	src/heap.h	128;"	d
+CHUNK_NEXT	src/heap.h	241;"	d
+CHUNK_NEXT_UNCHECKED	src/heap.h	250;"	d
+CHUNK_PARENT_BLOCK	src/heap.h	263;"	d
+CHUNK_PREV	src/heap.h	236;"	d
+CHUNK_PREV_UNCHECKED	src/heap.h	246;"	d
+CHUNK_SIZE	src/heap.h	214;"	d
+CHUNK_USER_MEM	src/heap.h	257;"	d
+CLASS_HUGE	src/heap.h	169;"	d
+CLASS_LARGE	src/heap.h	168;"	d
+CLASS_MEDIUM	src/heap.h	167;"	d
+CLASS_MICRO	src/heap.h	162;"	d
+CLASS_MICRO	src/heap.h	164;"	d
+CLASS_SMALL	src/heap.h	166;"	d
+ConvertFloatingPoint	src/FormatString.c	/^static int ConvertFloatingPoint(char *buffer,double absvalue,$/;"	f	file:
+DEFAULT_BLOCK_SIZE	src/internal.h	125;"	d
+DEFAULT_START_SIZE_IDX	src/hash_table.h	69;"	d
+EXPAND	src/internal.h	21;"	d
+FormatOutputFunction	src/FormatString.h	/^typedef void FormatOutputFunction(char c,void *context);$/;"	t
+FormatString	src/FormatString.c	/^static int FormatString(FormatOutputFunction *outputfunc,void *context,const char *format,va_list args)$/;"	f	file:
+FormatStringFloatingPointEnabled	src/FormatString.c	6;"	d	file:
+FormatStringLongLongIntEnabled	src/FormatString.c	7;"	d	file:
+GB	src/internal.h	122;"	d
+HEAP_S_LOCK	src/heap.h	294;"	d
+HEAP_S_LOCK_INIT	src/heap.h	293;"	d
+HEAP_S_UNLOCK	src/heap.h	295;"	d
+HEAP_THREAD	src/heap.h	273;"	d
+HEAP_USER	src/heap.h	274;"	d
+HMALLOC_ALWAYS_INLINE	src/internal.h	48;"	d
+HMALLOC_ALWAYS_INLINE	src/internal.h	50;"	d
+HMALLOC_ANSI_C	src/internal.h	16;"	d
+HMALLOC_MAX_THREADS	src/thread.h	21;"	d
+HMALLOC_OBJMAP_MODE_OBJECT	src/init.h	18;"	d
+HMALLOC_OBJMAP_MODE_UNKNOWN	src/init.h	17;"	d
+HMALLOC_OBJMAP_MODE_USER_HEAP	src/init.h	19;"	d
+HMALLOC_SITE_LAYOUT_SITE	src/init.h	15;"	d
+HMALLOC_SITE_LAYOUT_THREAD	src/init.h	14;"	d
+HMALLOC_SITE_LAYOUT_UNKNOWN	src/init.h	13;"	d
+IMALLOC_LOCK	src/internal_malloc.h	8;"	d
+IMALLOC_UNLOCK	src/internal_malloc.h	9;"	d
+INIT_LOCK	src/init.h	9;"	d
+INIT_UNLOCK	src/init.h	10;"	d
+IS_ALIGNED	src/internal.h	103;"	d
+IS_ALIGNED_PP	src/internal.h	104;"	d
+IS_POWER_OF_TWO	src/internal.h	105;"	d
+IS_POWER_OF_TWO_PP	src/internal.h	106;"	d
+IntegerType	src/FormatString.c	/^typedef long int IntegerType;$/;"	t	file:
+IntegerType	src/FormatString.c	/^typedef long long int IntegerType;$/;"	t	file:
+KB	src/internal.h	120;"	d
+LARGEST_CHUNK_IN_EMPTY_N_PAGE_BLOCK	src/heap.h	268;"	d
+LARGEST_CLASS	src/heap.h	173;"	d
+LIST_LOCK	src/heap.h	156;"	d
+LIST_LOCK_INIT	src/heap.h	155;"	d
+LIST_UNLOCK	src/heap.h	157;"	d
+LOG	src/internal.h	75;"	d
+LOG	src/internal.h	87;"	d
+LOG2_16BIT	src/internal.h	109;"	d
+LOG2_32BIT	src/internal.h	110;"	d
+LOG2_64BIT	src/internal.h	112;"	d
+LOG2_8BIT	src/internal.h	108;"	d
+LOG_2_HMALLOC_MAX_THREADS	src/thread.h	32;"	d
+LOG_LOCK	src/internal.h	72;"	d
+LOG_UNLOCK	src/internal.h	73;"	d
+MAX	src/internal.h	29;"	d
+MAX_SMALL_CHUNK	src/heap.h	175;"	d
+MB	src/internal.h	121;"	d
+MIN	src/internal.h	28;"	d
+MUTEX_INITIALIZER	src/locks.h	10;"	d
+N_SIZE_CLASSES	src/heap.h	159;"	d
+OBJECT_MAP_CONTROLLER_CMD_ADD	src/proc_object_map.h	39;"	d
+OBJECT_MAP_CONTROLLER_CMD_DEL	src/proc_object_map.h	40;"	d
+OBJECT_MAP_CONTROLLER_MAGIC	src/proc_object_map.h	37;"	d
+OS_TID_TO_HM_TID	src/thread.h	57;"	d
+OutputDigitString	src/FormatString.c	/^static int OutputDigitString(FormatOutputFunction *outputfunc,void *context,$/;"	f	file:
+OutputFloatingPoint	src/FormatString.c	/^static int OutputFloatingPoint(FormatOutputFunction *outputfunc,void *context,$/;"	f	file:
+OutputSignedInteger	src/FormatString.c	/^static int OutputSignedInteger(FormatOutputFunction *outputfunc,void *context,$/;"	f	file:
+OutputString	src/FormatString.c	/^static int OutputString(FormatOutputFunction *outputfunc,void *context,const char *string,$/;"	f	file:
+OutputUnsignedInteger	src/FormatString.c	/^static int OutputUnsignedInteger(FormatOutputFunction *outputfunc,void *context,$/;"	f	file:
+PROC_OBJECT_MAP_IMPL	src/hmalloc.c	14;"	d	file:
+ParseFlags	src/FormatString.c	/^static bool ParseFlags(const char **positiveprefix,bool *padright,bool *padzero,$/;"	f	file:
+ParseInteger	src/FormatString.c	/^static int ParseInteger(const char **format,va_list args)$/;"	f	file:
+ParseLengthModifier	src/FormatString.c	/^static bool ParseLengthModifier(int *modifier,const char **format)$/;"	f	file:
+ParseSizes	src/FormatString.c	/^static bool ParseSizes(int *width,int *precision,bool *padright,bool *padzero,const char **format,va_list args)$/;"	f	file:
+SBLOCK_CLASS_HUGE	src/heap.h	54;"	d
+SBLOCK_CLASS_HUGE_BLOCK_SIZE	src/heap.h	84;"	d
+SBLOCK_CLASS_HUGE_IDX	src/heap.h	63;"	d
+SBLOCK_CLASS_HUGE_RESERVED_SLOTS	src/heap.h	104;"	d
+SBLOCK_CLASS_LARGE	src/heap.h	53;"	d
+SBLOCK_CLASS_LARGE_BLOCK_SIZE	src/heap.h	83;"	d
+SBLOCK_CLASS_LARGE_IDX	src/heap.h	62;"	d
+SBLOCK_CLASS_LARGE_RESERVED_SLOTS	src/heap.h	103;"	d
+SBLOCK_CLASS_MEDIUM	src/heap.h	52;"	d
+SBLOCK_CLASS_MEDIUM_BLOCK_SIZE	src/heap.h	82;"	d
+SBLOCK_CLASS_MEDIUM_IDX	src/heap.h	61;"	d
+SBLOCK_CLASS_MEDIUM_RESERVED_SLOTS	src/heap.h	102;"	d
+SBLOCK_CLASS_MEGA	src/heap.h	55;"	d
+SBLOCK_CLASS_MEGA_BLOCK_SIZE	src/heap.h	85;"	d
+SBLOCK_CLASS_MEGA_IDX	src/heap.h	64;"	d
+SBLOCK_CLASS_MEGA_RESERVED_SLOTS	src/heap.h	105;"	d
+SBLOCK_CLASS_MICRO	src/heap.h	49;"	d
+SBLOCK_CLASS_MICRO_BLOCK_SIZE	src/heap.h	79;"	d
+SBLOCK_CLASS_MICRO_IDX	src/heap.h	58;"	d
+SBLOCK_CLASS_MICRO_RESERVED_SLOTS	src/heap.h	99;"	d
+SBLOCK_CLASS_NANO	src/heap.h	48;"	d
+SBLOCK_CLASS_NANO_BLOCK_SIZE	src/heap.h	78;"	d
+SBLOCK_CLASS_NANO_IDX	src/heap.h	57;"	d
+SBLOCK_CLASS_NANO_RESERVED_SLOTS	src/heap.h	98;"	d
+SBLOCK_CLASS_SMALL	src/heap.h	51;"	d
+SBLOCK_CLASS_SMALL_BLOCK_SIZE	src/heap.h	81;"	d
+SBLOCK_CLASS_SMALL_IDX	src/heap.h	60;"	d
+SBLOCK_CLASS_SMALL_RESERVED_SLOTS	src/heap.h	101;"	d
+SBLOCK_CLASS_TINY	src/heap.h	50;"	d
+SBLOCK_CLASS_TINY_BLOCK_SIZE	src/heap.h	80;"	d
+SBLOCK_CLASS_TINY_IDX	src/heap.h	59;"	d
+SBLOCK_CLASS_TINY_RESERVED_SLOTS	src/heap.h	100;"	d
+SBLOCK_INTERVAL	src/heap.h	46;"	d
+SBLOCK_LARGEST_CLASS	src/heap.h	76;"	d
+SBLOCK_MAX_ALLOC_SIZE	src/heap.h	118;"	d
+SBLOCK_N_SIZE_CLASSES	src/heap.h	44;"	d
+SBLOCK_SMALLEST_CLASS	src/heap.h	75;"	d
+SET_CHUNK_OFFSET_NEXT	src/heap.h	230;"	d
+SET_CHUNK_OFFSET_PREV	src/heap.h	224;"	d
+SET_CHUNK_SIZE	src/heap.h	216;"	d
+SINT	src/internal.h	32;"	d
+SMALLEST_CLASS	src/heap.h	172;"	d
+SMALL_CHUNK_ADJACENT	src/heap.h	221;"	d
+STR	src/hash_table.h	48;"	d
+STR	src/tree.h	49;"	d
+SprintfOutputFunction	src/FormatString.c	/^static void SprintfOutputFunction(char c,void *context)$/;"	f	file:
+TB	src/internal.h	123;"	d
+TOTAL_BYTES	src/proc_object_map.h	184;"	d
+TOTAL_BYTES	src/proc_object_map.h	208;"	d
+UINT	src/internal.h	31;"	d
+USER_HEAPS_LOCK	src/heap.h	311;"	d
+USER_HEAPS_UNLOCK	src/heap.h	312;"	d
+UnsignedIntegerType	src/FormatString.c	/^typedef unsigned long int UnsignedIntegerType;$/;"	t	file:
+UnsignedIntegerType	src/FormatString.c	/^typedef unsigned long long int UnsignedIntegerType;$/;"	t	file:
+WHOLE_BLOCK_CHUNK_SIZE	src/heap.c	952;"	d	file:
+WHOLE_BLOCK_CHUNK_SIZE_IN_WORDS	src/heap.c	936;"	d	file:
+XOR_SWAP_64	src/internal.h	90;"	d
+XOR_SWAP_PTR	src/internal.h	96;"	d
+_CAT2	src/hash_table.h	52;"	d
+_CAT2	src/internal.h	23;"	d
+_CAT2	src/tree.h	53;"	d
+_CAT3	src/hash_table.h	55;"	d
+_CAT3	src/tree.h	56;"	d
+_CAT4	src/hash_table.h	58;"	d
+_CAT4	src/tree.h	59;"	d
+_GNU_SOURCE	src/hmalloc.c	1;"	d	file:
+_HASH_TABLE_EQU	src/hash_table.h	66;"	d
+_HASH_TABLE_H_	src/hash_table.h	11;"	d
+_STR	src/hash_table.h	49;"	d
+_STR	src/tree.h	50;"	d
+_TI_FROM_TN	src/tree.h	80;"	d
+_TN_IS_RED	src/tree.h	78;"	d
+_TREE_CMP	src/tree.h	69;"	d
+_TREE_EQU	src/tree.h	73;"	d
+_TREE_H_	src/tree.h	12;"	d
+_TREE_LEQ	src/tree.h	75;"	d
+_TREE_LSS	src/tree.h	71;"	d
+__HEAP_H__	src/heap.h	2;"	d
+__HMALLOC_H__	src/hmalloc.h	2;"	d
+__INIT_H__	src/init.h	2;"	d
+__INTERNAL_H__	src/internal.h	2;"	d
+__INTERNAL_MALLOC_H__	src/internal_malloc.h	2;"	d
+__KERNEL_OBJMAP_H__	src/kernel_objmap.h	2;"	d
+__LOCKS_H__	src/locks.h	2;"	d
+__OS_H__	src/os.h	2;"	d
+__PRINTF_H__	src/FormatString.h	2;"	d
+__PROC_OBJECT_MAP_H__	src/proc_object_map.h	2;"	d
+__THREAD_H__	src/thread.h	2;"	d
+__bytes	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_HUGE];   } __sblock_slot_huge_t;$/;"	m	struct:__anon10
+__bytes	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_LARGE];  } __sblock_slot_large_t;$/;"	m	struct:__anon9
+__bytes	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_MEDIUM]; } __sblock_slot_medium_t;$/;"	m	struct:__anon8
+__bytes	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_MEGA];   } __sblock_slot_mega_t;$/;"	m	struct:__anon11
+__bytes	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_MICRO];  } __sblock_slot_micro_t;$/;"	m	struct:__anon5
+__bytes	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_NANO];   } __sblock_slot_nano_t;$/;"	m	struct:__anon4
+__bytes	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_SMALL];  } __sblock_slot_small_t;$/;"	m	struct:__anon7
+__bytes	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_TINY];   } __sblock_slot_tiny_t;$/;"	m	struct:__anon6
+__header	src/heap.h	/^    u64 __header;$/;"	m	union:__anon2
+__meta	src/heap.h	/^    heap__meta_t        __meta;$/;"	m	struct:__anon16
+__sblock_slot_huge_t	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_HUGE];   } __sblock_slot_huge_t;$/;"	t	typeref:struct:__anon10
+__sblock_slot_large_t	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_LARGE];  } __sblock_slot_large_t;$/;"	t	typeref:struct:__anon9
+__sblock_slot_medium_t	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_MEDIUM]; } __sblock_slot_medium_t;$/;"	t	typeref:struct:__anon8
+__sblock_slot_mega_t	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_MEGA];   } __sblock_slot_mega_t;$/;"	t	typeref:struct:__anon11
+__sblock_slot_micro_t	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_MICRO];  } __sblock_slot_micro_t;$/;"	t	typeref:struct:__anon5
+__sblock_slot_nano_t	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_NANO];   } __sblock_slot_nano_t;$/;"	t	typeref:struct:__anon4
+__sblock_slot_small_t	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_SMALL];  } __sblock_slot_small_t;$/;"	t	typeref:struct:__anon7
+__sblock_slot_tiny_t	src/heap.h	/^typedef struct { char __bytes[SBLOCK_CLASS_TINY];   } __sblock_slot_tiny_t;$/;"	t	typeref:struct:__anon6
+_hash_table	src/hash_table.h	62;"	d
+_hash_table_slot	src/hash_table.h	60;"	d
+_heap_get_big_chunk	src/heap.c	/^internal inline chunk_header_t * _heap_get_big_chunk(heap_t *heap, cblock_header_t *cblock) {$/;"	f
+_magic	src/proc_object_map.h	/^    unsigned int       _magic;$/;"	m	struct:object_map_controller_info
+_sblock_block_size_lookup	src/heap.h	/^internal u64 _sblock_block_size_lookup[] = {$/;"	v
+_sblock_reserved_slots_lookup	src/heap.h	/^internal u64 _sblock_reserved_slots_lookup[] = {$/;"	v
+_tree	src/tree.h	65;"	d
+_tree_it	src/tree.h	63;"	d
+_tree_node	src/tree.h	61;"	d
+addr	src/heap.h	/^    void     *addr;$/;"	m	struct:__anon12
+aligned_alloc	src/hmalloc.c	/^external inline void * aligned_alloc(size_t alignment, size_t size) {$/;"	f
+block_header_t	src/heap.h	/^} block_header_t;$/;"	t	typeref:struct:__anon14
+block_kind	src/heap.h	/^    u8                  block_kind;$/;"	m	struct:__anon14
+bump_ptr	src/internal_malloc.h	/^    void *bump_ptr;$/;"	m	struct:__anon17
+c	src/heap.h	/^        cblock_header_t c;$/;"	m	union:__anon14::__anon15
+calloc	src/hmalloc.c	/^external inline void * calloc(size_t count, size_t n_bytes) { return hmalloc_calloc(count, n_bytes);  }$/;"	f
+cblock_add_chunk_to_free_list	src/heap.c	/^internal inline void cblock_add_chunk_to_free_list(cblock_header_t *cblock, chunk_header_t *chunk) {$/;"	f
+cblock_coalesce_left_to_right	src/heap.c	/^internal inline void cblock_coalesce_left_to_right(cblock_header_t *cblock, chunk_header_t *left, chunk_header_t *right) {$/;"	f
+cblock_coalesce_right_to_left	src/heap.c	/^internal inline void cblock_coalesce_right_to_left(cblock_header_t *cblock, chunk_header_t *left, chunk_header_t *right) {$/;"	f
+cblock_free_chunk	src/heap.c	/^internal inline void cblock_free_chunk(cblock_header_t *cblock, chunk_header_t *chunk) {$/;"	f
+cblock_get_chunk_if_free	src/heap.c	/^internal inline chunk_header_t * cblock_get_chunk_if_free(cblock_header_t *cblock, u64 n_bytes) {$/;"	f
+cblock_header	src/heap.h	/^typedef struct cblock_header {$/;"	s
+cblock_header_t	src/heap.h	/^} cblock_header_t;$/;"	t	typeref:struct:cblock_header
+cblock_list	src/heap.h	/^typedef struct cblock_list {$/;"	s
+cblock_list_add_cblock	src/heap.c	/^internal inline void cblock_list_add_cblock(cblock_list_t *list, cblock_header_t *cblock) {$/;"	f
+cblock_list_make	src/heap.c	/^internal inline void cblock_list_make(cblock_list_t *list) {$/;"	f
+cblock_list_remove_cblock	src/heap.c	/^internal inline void cblock_list_remove_cblock(cblock_list_t *list, cblock_header_t *cblock) {$/;"	f
+cblock_list_t	src/heap.h	/^} cblock_list_t;$/;"	t	typeref:struct:cblock_list
+cblock_remove_chunk_from_free_list	src/heap.c	/^internal inline void cblock_remove_chunk_from_free_list(cblock_header_t *cblock, chunk_header_t *chunk) {$/;"	f
+cblock_split_chunk_and_replace_on_free_list	src/heap.c	/^internal inline void cblock_split_chunk_and_replace_on_free_list(cblock_header_t *cblock, chunk_header_t *chunk, u64 chunk_size_words, u64 n_words, chunk_header_t *prev_free_chunk, int has_next) {$/;"	f
+chunk_header_t	src/heap.h	/^} chunk_header_t;$/;"	t	typeref:union:__anon2
+cmd	src/proc_object_map.h	/^    int                cmd;$/;"	m	struct:object_map_controller_info
+coop_buff_n_bytes	src/proc_object_map.h	/^    int coop_buff_n_bytes;$/;"	m	struct:proc_object_map_record_t
+dec_thr_ref	src/thread.c	/^internal void dec_thr_ref(void *_thr) {$/;"	f
+dumb_free	src/internal_malloc.c	/^internal inline void dumb_free(void *addr) { \/* Ignore. *\/ }$/;"	f
+dumb_malloc	src/internal_malloc.c	/^internal inline void *dumb_malloc(u64 size) {$/;"	f
+dumb_malloc_info	src/internal_malloc.h	/^internal dumb_malloc_t dumb_malloc_info;$/;"	v
+dumb_malloc_t	src/internal_malloc.h	/^} dumb_malloc_t;$/;"	t	typeref:struct:__anon17
+end	src/heap.h	/^    void                 *end;$/;"	m	struct:cblock_header
+end	src/heap.h	/^    void                 *end;$/;"	m	struct:sblock_header
+end	src/internal_malloc.h	/^    void *end;$/;"	m	struct:__anon17
+external	src/internal.h	45;"	d
+fd	src/proc_object_map.h	/^    int          fd;$/;"	m	struct:proc_object_map_t
+flags	src/heap.h	/^        u64 flags              : 3;$/;"	m	struct:__anon2::__anon3
+flags	src/heap.h	/^    u16       flags;$/;"	m	struct:__anon12
+free	src/heap.h	302;"	d
+free	src/heap.h	305;"	d
+free	src/hmalloc.c	/^external inline void   free(void *addr)                     { hmalloc_free(addr);                     }$/;"	f
+free_list_head	src/heap.h	/^    chunk_header_t       *free_list_head,$/;"	m	struct:cblock_header
+free_list_tail	src/heap.h	/^                         *free_list_tail;$/;"	m	struct:cblock_header
+get_next_cpu_idx	src/thread.c	/^internal inline u32 get_next_cpu_idx(void) {$/;"	f
+get_or_make_user_heap	src/heap.c	/^internal inline heap_t * get_or_make_user_heap(char *handle) {$/;"	f
+get_pages_from_os	src/os.c	/^internal inline void * get_pages_from_os(u64 n_pages, u64 alignment) {$/;"	f
+get_this_thread	src/thread.c	/^internal inline thread_data_t * get_this_thread(void) {$/;"	f
+get_this_thread_heap	src/thread.c	/^internal inline heap_t * get_this_thread_heap(void) {$/;"	f
+get_this_tid	src/thread.c	/^internal inline hm_tid_t get_this_tid(void) {$/;"	f
+get_user_heap	src/thread.c	/^internal inline heap_t * get_user_heap(heap_handle_t handle) {$/;"	f
+haligned_alloc	src/hmalloc.c	/^external inline void * haligned_alloc(heap_handle_t h, size_t alignment, size_t size) {$/;"	f
+handle	src/heap.h	/^        char *handle;$/;"	m	union:__anon12::__anon13
+handleOOM	src/hmalloc_cpp.cpp	/^handleOOM(std::size_t size, bool nothrow) {$/;"	f	file:
+hash_table	src/hash_table.h	63;"	d
+hash_table_delete	src/hash_table.h	24;"	d
+hash_table_free	src/hash_table.h	20;"	d
+hash_table_get_key	src/hash_table.h	21;"	d
+hash_table_get_val	src/hash_table.h	22;"	d
+hash_table_insert	src/hash_table.h	23;"	d
+hash_table_len	src/hash_table.h	19;"	d
+hash_table_make	src/hash_table.h	17;"	d
+hash_table_make_e	src/hash_table.h	18;"	d
+hash_table_pretty_name	src/hash_table.h	64;"	d
+hash_table_slot	src/hash_table.h	61;"	d
+hash_table_traverse	src/hash_table.h	25;"	d
+hcalloc	src/hmalloc.c	/^external inline void * hcalloc(heap_handle_t h, size_t count, size_t n_bytes) {$/;"	f
+head	src/heap.h	/^    cblock_header_t *head;$/;"	m	struct:cblock_list
+heap	src/thread.h	/^    heap_t        heap;$/;"	m	struct:__anon18
+heap__meta	src/heap.h	/^    heap__meta_t        heap__meta;$/;"	m	struct:__anon14
+heap__meta_t	src/heap.h	/^} heap__meta_t;$/;"	t	typeref:struct:__anon12
+heap_add_sblock	src/heap.c	/^void heap_add_sblock(heap_t *heap, sblock_header_t *sblock) {$/;"	f
+heap_aligned_alloc	src/heap.c	/^internal inline void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignment) {$/;"	f
+heap_alloc	src/heap.c	/^internal inline void * heap_alloc(heap_t *heap, u64 n_bytes) {$/;"	f
+heap_alloc_from_cblock_list	src/heap.c	/^internal inline void * heap_alloc_from_cblock_list(heap_t *heap, cblock_list_t *list, u64 n_bytes) {$/;"	f
+heap_alloc_from_sblocks	src/heap.c	/^internal inline void * heap_alloc_from_sblocks(heap_t *heap, u64 size_class, u32 size_class_idx) {$/;"	f
+heap_big_alloc	src/heap.c	/^internal inline void * heap_big_alloc(heap_t *heap, u64 n_bytes) {$/;"	f
+heap_free	src/heap.c	/^internal inline void heap_free(heap_t *heap, void *addr) {$/;"	f
+heap_free_big_chunk	src/heap.c	/^internal inline void heap_free_big_chunk(heap_t *heap, chunk_header_t *big_chunk) {$/;"	f
+heap_free_from_sblock	src/heap.c	/^internal inline void heap_free_from_sblock(heap_t *heap, sblock_header_t *sblock, void *slot) {$/;"	f
+heap_get_big_chunk	src/heap.c	/^internal inline chunk_header_t * heap_get_big_chunk(heap_t *heap, u64 n_bytes) {$/;"	f
+heap_get_free_chunk_from_cblock_list	src/heap.c	/^internal inline chunk_header_t * heap_get_free_chunk_from_cblock_list(heap_t *heap, cblock_list_t *list, u64 n_bytes) {$/;"	f
+heap_handle_equ	src/heap.c	/^internal inline i32 heap_handle_equ(heap_handle_t a, heap_handle_t b) { return strcmp(a, b) == 0; }$/;"	f
+heap_handle_hash	src/heap.c	/^internal inline u64 heap_handle_hash(heap_handle_t h) {$/;"	f
+heap_handle_t	src/heap.h	/^typedef char *heap_handle_t;$/;"	t
+heap_handle_t	src/hmalloc.h	/^typedef char *heap_handle_t;$/;"	t
+heap_make	src/heap.c	/^internal inline void heap_make(heap_t *heap) {$/;"	f
+heap_new_aligned_cblock	src/heap.c	/^internal inline cblock_header_t * heap_new_aligned_cblock(heap_t *heap, u64 n_bytes, u64 alignment) {$/;"	f
+heap_new_cblock	src/heap.c	/^internal inline cblock_header_t * heap_new_cblock(heap_t *heap, u64 n_bytes) {$/;"	f
+heap_new_sblock	src/heap.c	/^sblock_header_t * heap_new_sblock(heap_t *heap, u32 size_class, u32 size_class_idx) {$/;"	f
+heap_remove_sblock	src/heap.c	/^void heap_remove_sblock(heap_t *heap, sblock_header_t *sblock) {$/;"	f
+heap_t	src/heap.h	/^} heap_t;$/;"	t	typeref:struct:__anon16
+hfree	src/hmalloc.c	/^external inline void hfree(void *addr)    { hmalloc_free(addr); }$/;"	f
+hid	src/heap.h	/^    u32       hid;$/;"	m	struct:__anon12
+hid_counter	src/heap.h	/^internal u32 hid_counter;$/;"	v
+hm_tid_t	src/thread.h	/^typedef u16 hm_tid_t;$/;"	t
+hmalloc	src/hmalloc.c	/^external inline void * hmalloc(heap_handle_t h, size_t n_bytes) {$/;"	f
+hmalloc_aligned_alloc	src/hmalloc.c	/^external inline void * hmalloc_aligned_alloc(size_t alignment, size_t size) {$/;"	f
+hmalloc_assert_fail	src/internal.c	/^internal void hmalloc_assert_fail(const char *msg, const char *fname, int line, const char *cond_str) {$/;"	f
+hmalloc_calloc	src/hmalloc.c	/^external inline void * hmalloc_calloc(size_t count, size_t n_bytes) {$/;"	f
+hmalloc_fini	src/init.c	/^internal void hmalloc_fini(void) {$/;"	f
+hmalloc_free	src/hmalloc.c	/^external inline void hmalloc_free(void *addr) {$/;"	f
+hmalloc_ignore_frees	src/init.h	/^internal int hmalloc_ignore_frees   = 0;$/;"	v
+hmalloc_init	src/init.c	/^internal void hmalloc_init(void) {$/;"	f
+hmalloc_init_lock	src/init.h	/^internal pthread_mutex_t hmalloc_init_lock = PTHREAD_MUTEX_INITIALIZER;$/;"	v
+hmalloc_is_initialized	src/init.h	/^internal int hmalloc_is_initialized = 0;$/;"	v
+hmalloc_malloc	src/hmalloc.c	/^external inline void *hmalloc_malloc(size_t n_bytes) {$/;"	f
+hmalloc_malloc_size	src/hmalloc.c	/^external inline size_t hmalloc_malloc_size(void *addr) {$/;"	f
+hmalloc_objmap_mode	src/init.h	/^internal int hmalloc_objmap_mode    = HMALLOC_OBJMAP_MODE_UNKNOWN;$/;"	v
+hmalloc_posix_memalign	src/hmalloc.c	/^external inline int hmalloc_posix_memalign(void **memptr, size_t alignment, size_t n_bytes) {$/;"	f
+hmalloc_printf	src/internal.c	/^internal void hmalloc_printf(int fd, const char *fmt, ...) {$/;"	f
+hmalloc_putc	src/internal.c	/^internal void hmalloc_putc(char c, void *fd) {$/;"	f
+hmalloc_realloc	src/hmalloc.c	/^external inline void * hmalloc_realloc(void *addr, size_t n_bytes) {$/;"	f
+hmalloc_reallocf	src/hmalloc.c	/^external inline void * hmalloc_reallocf(void *addr, size_t n_bytes) {$/;"	f
+hmalloc_site_aligned_alloc	src/hmalloc.c	/^void * hmalloc_site_aligned_alloc(char *site, size_t alignment, size_t size) {$/;"	f
+hmalloc_site_calloc	src/hmalloc.c	/^void * hmalloc_site_calloc(char *site, size_t count, size_t n_bytes) {$/;"	f
+hmalloc_site_free	src/hmalloc.c	/^void hmalloc_site_free(void *addr) {$/;"	f
+hmalloc_site_layout	src/init.h	/^internal int hmalloc_site_layout    = HMALLOC_SITE_LAYOUT_UNKNOWN;$/;"	v
+hmalloc_site_malloc	src/hmalloc.c	/^void * hmalloc_site_malloc(char *site, size_t n_bytes) {$/;"	f
+hmalloc_site_malloc_size	src/hmalloc.c	/^size_t hmalloc_site_malloc_size(void *addr) {$/;"	f
+hmalloc_site_malloc_usable_size	src/hmalloc.c	/^size_t hmalloc_site_malloc_usable_size(void *addr) {$/;"	f
+hmalloc_site_memalign	src/hmalloc.c	/^void * hmalloc_site_memalign(char *site, size_t alignment, size_t size) {$/;"	f
+hmalloc_site_posix_memalign	src/hmalloc.c	/^int hmalloc_site_posix_memalign(char *site, void **memptr, size_t alignment, size_t size) {$/;"	f
+hmalloc_site_pvalloc	src/hmalloc.c	/^void * hmalloc_site_pvalloc(char *site, size_t n_bytes) {$/;"	f
+hmalloc_site_realloc	src/hmalloc.c	/^void * hmalloc_site_realloc(char *site, void *addr, size_t n_bytes) {$/;"	f
+hmalloc_site_reallocf	src/hmalloc.c	/^void * hmalloc_site_reallocf(char *site, void *addr, size_t n_bytes) {$/;"	f
+hmalloc_site_valloc	src/hmalloc.c	/^void * hmalloc_site_valloc(char *site, size_t n_bytes) {$/;"	f
+hmalloc_size	src/hmalloc.c	/^size_t hmalloc_size(void *addr) {$/;"	f
+hmalloc_usable_size	src/hmalloc.c	/^size_t hmalloc_usable_size(void *addr) {$/;"	f
+hmalloc_valloc	src/hmalloc.c	/^external inline void * hmalloc_valloc(size_t n_bytes) {$/;"	f
+hmemalign	src/hmalloc.c	/^external inline void * hmemalign(heap_handle_t h, size_t alignment, size_t size) {$/;"	f
+hposix_memalign	src/hmalloc.c	/^external inline int hposix_memalign(heap_handle_t h, void **memptr, size_t alignment, size_t size) {$/;"	f
+hpvalloc	src/hmalloc.c	/^external inline void * hpvalloc(heap_handle_t h, size_t n_bytes) {$/;"	f
+hrealloc	src/hmalloc.c	/^external inline void * hrealloc(heap_handle_t h, void *addr, size_t n_bytes) {$/;"	f
+hreallocf	src/hmalloc.c	/^external inline void * hreallocf(heap_handle_t h, void *addr, size_t n_bytes) {$/;"	f
+ht_prime_sizes	src/hash_table.h	/^uint64_t ht_prime_sizes[] = {$/;"	v
+hvalloc	src/hmalloc.c	/^external inline void * hvalloc(heap_handle_t h, size_t n_bytes) {$/;"	f
+i16	src/internal.h	40;"	d
+i32	src/internal.h	41;"	d
+i64	src/internal.h	42;"	d
+i8	src/internal.h	39;"	d
+ialigned_alloc	src/internal_malloc.c	/^internal inline void * ialigned_alloc(u64 alignment, u64 size) {$/;"	f
+icalloc	src/internal_malloc.c	/^internal inline void * icalloc(u64 n, u64 size) {$/;"	f
+id	src/thread.h	/^    u64           id;$/;"	m	struct:__anon18
+ifree	src/internal_malloc.c	/^internal inline void ifree(void *addr) {$/;"	f
+imalloc	src/internal_malloc.c	/^internal inline void * imalloc(u64 size) {$/;"	f
+imalloc_init	src/internal_malloc.c	/^internal inline void imalloc_init(void) {$/;"	f
+imalloc_size	src/internal_malloc.c	/^internal inline size_t imalloc_size(void *addr) {$/;"	f
+initialized	src/internal_malloc.h	/^    int   initialized;$/;"	m	struct:__anon17
+internal	src/internal.h	44;"	d
+internal_malloc_lock	src/internal_malloc.h	/^internal mutex_t internal_malloc_lock = MUTEX_INITIALIZER;$/;"	v
+iposix_memalign	src/internal_malloc.c	/^internal inline int iposix_memalign(void **memptr, u64 alignment, size_t n_bytes) {$/;"	f
+irealloc	src/internal_malloc.c	/^internal inline void * irealloc(void *addr, u64 size) {$/;"	f
+is_valid	src/thread.h	/^    int           is_valid;$/;"	m	struct:__anon18
+istrdup	src/internal.c	/^internal char * istrdup(char *s) {$/;"	f
+ivalloc	src/internal_malloc.c	/^internal inline void * ivalloc(u64 size) {$/;"	f
+kernel_objmap_add_object	src/kernel_objmap.c	/^internal void kernel_objmap_add_object(void *obj, u64 len) {$/;"	f
+kernel_objmap_del_object	src/kernel_objmap.c	/^internal void kernel_objmap_del_object(void *obj) {$/;"	f
+kernel_objmap_init	src/kernel_objmap.c	/^internal void kernel_objmap_init(void) {$/;"	f
+kernel_objmap_write_site	src/kernel_objmap.c	/^internal void kernel_objmap_write_site(void *obj, u64 obj_size, char *site) {$/;"	f
+key	src/thread.h	/^    pthread_key_t key;$/;"	m	struct:__anon18
+likely	src/hmalloc_cpp.cpp	4;"	d	file:
+likely	src/internal.h	25;"	d
+list	src/heap.h	/^    struct cblock_list   *list;$/;"	m	struct:cblock_header	typeref:struct:cblock_header::cblock_list
+lists	src/heap.h	/^    cblock_list_t       lists[N_SIZE_CLASSES];$/;"	m	struct:__anon16
+local_thr	src/thread.c	/^internal __thread thread_data_t *local_thr;$/;"	v
+lock	src/heap.h	/^    mutex_t          lock;$/;"	m	struct:cblock_list
+log_2_page_size	src/os.h	/^    u64 log_2_page_size;$/;"	m	struct:__anon1
+log_fd	src/internal.h	/^internal int     log_fd  = 1;$/;"	v
+log_init	src/internal.c	/^void log_init(void) {$/;"	f
+log_mtx	src/internal.h	/^internal mutex_t log_mtx = MUTEX_INITIALIZER;$/;"	v
+malloc	src/heap.h	301;"	d
+malloc	src/heap.h	304;"	d
+malloc	src/hmalloc.c	/^external inline void * malloc(size_t n_bytes)               { return hmalloc_malloc(n_bytes);         }$/;"	f
+malloc_size	src/hmalloc.c	/^external inline size_t malloc_size(void *addr)        { return hmalloc_malloc_size(addr); }$/;"	f
+malloc_usable_size	src/hmalloc.c	/^external inline size_t malloc_usable_size(void *addr) { return hmalloc_malloc_size(addr); }$/;"	f
+max_allocations	src/heap.h	/^    u32                   max_allocations;$/;"	m	struct:sblock_header
+memalign	src/hmalloc.c	/^external inline void * memalign(size_t alignment, size_t size) {$/;"	f
+mutex_init	src/locks.c	/^internal inline void mutex_init(mutex_t *mtx_ptr) {$/;"	f
+mutex_lock	src/locks.c	/^internal inline void mutex_lock(mutex_t *mtx_ptr) {$/;"	f
+mutex_t	src/locks.h	/^typedef pthread_mutex_t    mutex_t;$/;"	t
+mutex_unlock	src/locks.c	/^internal inline void mutex_unlock(mutex_t *mtx_ptr) {$/;"	f
+my_itoa	src/proc_object_map.h	/^static char *my_itoa(char *p, unsigned x) {$/;"	f
+n_allocations	src/heap.h	/^    u32                   n_allocations;$/;"	m	struct:sblock_header
+n_resident_pages	src/proc_object_map.h	/^    int n_resident_pages;$/;"	m	struct:proc_object_map_record_t
+n_sblocks	src/heap.h	/^    u32                 n_sblocks[SBLOCK_N_SIZE_CLASSES];$/;"	m	struct:__anon16
+next	src/heap.h	/^    struct cblock_header *next;$/;"	m	struct:cblock_header	typeref:struct:cblock_header::cblock_header
+next	src/heap.h	/^    struct sblock_header *next;$/;"	m	struct:sblock_header	typeref:struct:sblock_header::sblock_header
+next_power_of_2	src/internal.c	/^internal u64 next_power_of_2(u64 x) {$/;"	f
+noexcept	src/hmalloc_cpp.cpp	/^alignedNewImpl(std::size_t size, std::align_val_t alignment) noexcept(IsNoExcept) {$/;"	f
+noexcept	src/hmalloc_cpp.cpp	/^newImpl(std::size_t size) noexcept(IsNoExcept) {$/;"	f
+num_thrs	src/thread.c	/^internal u32                     num_thrs;$/;"	v
+object_map_controller_info	src/proc_object_map.h	/^struct object_map_controller_info {$/;"	s
+objmap_add_range	src/proc_object_map.h	/^int objmap_add_range(struct proc_object_map_t *objmap, void *start, void *end) {$/;"	f
+objmap_close	src/proc_object_map.h	/^int objmap_close(struct proc_object_map_t *objmap) {$/;"	f
+objmap_del_range	src/proc_object_map.h	/^int objmap_del_range(struct proc_object_map_t *objmap, void *start) {$/;"	f
+objmap_entry_read_record	src/proc_object_map.h	/^int objmap_entry_read_record(const char *entry_path, struct proc_object_map_record_t *record_p) {$/;"	f
+objmap_entry_read_record_coop_buff	src/proc_object_map.h	/^int objmap_entry_read_record_coop_buff(const char *entry_path, void *buff, int n_coop_buff_bytes) {$/;"	f
+objmap_entry_write_record_coop_buff	src/proc_object_map.h	/^int objmap_entry_write_record_coop_buff(const char *entry_path, void *buff, int n_coop_buff_bytes) {$/;"	f
+objmap_open	src/proc_object_map.h	/^int objmap_open(struct proc_object_map_t *objmap) {$/;"	f
+offset_next_words	src/heap.h	/^        u64 offset_next_words  : 20;$/;"	m	struct:__anon2::__anon3
+offset_prev_words	src/heap.h	/^        u64 offset_prev_words  : 20;$/;"	m	struct:__anon2::__anon3
+open_proc_fs_entry	src/proc_object_map.h	/^static int open_proc_fs_entry(pid_t pid) {$/;"	f
+operator new	src/hmalloc_cpp.cpp	/^operator new(std::size_t size) {$/;"	f
+operator new	src/hmalloc_cpp.cpp	/^operator new(std::size_t size, std::align_val_t alignment) {$/;"	f
+operator new[]	src/hmalloc_cpp.cpp	/^operator new[](std::size_t size) {$/;"	f
+operator new[]	src/hmalloc_cpp.cpp	/^operator new[](std::size_t size, std::align_val_t alignment) {$/;"	f
+os_get_num_cpus	src/os.c	/^internal inline u32 os_get_num_cpus(void) {$/;"	f
+os_get_tid	src/os.c	/^internal inline pid_t os_get_tid(void) {$/;"	f
+page_size	src/os.h	/^    u64 page_size;$/;"	m	struct:__anon1
+page_size	src/proc_object_map.h	/^    unsigned int page_size;$/;"	m	struct:proc_object_map_t
+perform_sanity_checks	src/init.c	/^internal void perform_sanity_checks(void) {$/;"	f
+pid	src/proc_object_map.h	/^    int          pid;$/;"	m	struct:proc_object_map_t
+posix_memalign	src/hmalloc.c	/^external inline int posix_memalign(void **memptr, size_t alignment, size_t size) {$/;"	f
+prev	src/heap.h	/^    struct cblock_header *prev;$/;"	m	struct:cblock_header	typeref:struct:cblock_header::cblock_header
+prev	src/heap.h	/^    struct sblock_header *prev;$/;"	m	struct:sblock_header	typeref:struct:sblock_header::sblock_header
+proc_object_map	src/kernel_objmap.c	/^static struct proc_object_map_t proc_object_map;$/;"	v	typeref:struct:proc_object_map_t	file:
+proc_object_map_record_t	src/proc_object_map.h	/^struct proc_object_map_record_t {$/;"	s
+proc_object_map_t	src/proc_object_map.h	/^struct proc_object_map_t {$/;"	s
+pvalloc	src/hmalloc.c	/^external inline void * pvalloc(size_t n_bytes)              { ASSERT(0, "pvalloc"); return NULL;      }$/;"	f
+range_end	src/proc_object_map.h	/^    unsigned long long range_end;$/;"	m	struct:object_map_controller_info
+range_start	src/proc_object_map.h	/^    unsigned long long range_start;$/;"	m	struct:object_map_controller_info
+realloc	src/hmalloc.c	/^external inline void * realloc(void *addr, size_t n_bytes)  { return hmalloc_realloc(addr, n_bytes);  }$/;"	f
+reallocf	src/hmalloc.c	/^external inline void * reallocf(void *addr, size_t n_bytes) { return hmalloc_reallocf(addr, n_bytes); }$/;"	f
+ref_count	src/thread.h	/^    u32           ref_count;$/;"	m	struct:__anon18
+regions_bitfield	src/heap.h	/^    u64                   regions_bitfield;$/;"	m	struct:sblock_header
+release_cblock	src/heap.c	/^internal inline void release_cblock(cblock_header_t *cblock) {$/;"	f
+release_pages_to_os	src/os.c	/^internal inline void release_pages_to_os(void *addr, u64 n_pages) {$/;"	f
+release_sblock	src/heap.c	/^void release_sblock(sblock_header_t *sblock) {$/;"	f
+rw_lock_init	src/locks.c	/^internal inline void rw_lock_init(rw_lock_t *rw_lock_ptr) {$/;"	f
+rw_lock_rlock	src/locks.c	/^internal inline void rw_lock_rlock(rw_lock_t *rw_lock_ptr) {$/;"	f
+rw_lock_t	src/locks.h	/^typedef pthread_rwlock_t   rw_lock_t;$/;"	t
+rw_lock_unlock	src/locks.c	/^internal inline void rw_lock_unlock(rw_lock_t *rw_lock_ptr) {$/;"	f
+rw_lock_wlock	src/locks.c	/^internal inline void rw_lock_wlock(rw_lock_t *rw_lock_ptr) {$/;"	f
+s	src/heap.h	/^        sblock_header_t s;$/;"	m	union:__anon14::__anon15
+s_locks	src/heap.h	/^    spin_t              s_locks[SBLOCK_N_SIZE_CLASSES];$/;"	m	struct:__anon16
+sblock_get_slot_if_free	src/heap.c	/^internal inline void * sblock_get_slot_if_free(sblock_header_t *sblock) {$/;"	f
+sblock_header	src/heap.h	/^typedef struct sblock_header {$/;"	s
+sblock_header_t	src/heap.h	/^} sblock_header_t;$/;"	t	typeref:struct:sblock_header
+sblocks_heads	src/heap.h	/^    sblock_header_t    *sblocks_heads[SBLOCK_N_SIZE_CLASSES],$/;"	m	struct:__anon16
+sblocks_tails	src/heap.h	/^                       *sblocks_tails[SBLOCK_N_SIZE_CLASSES];$/;"	m	struct:__anon16
+setup_local_thr	src/thread.c	/^internal inline void setup_local_thr(void) {$/;"	f
+size	src/heap.h	/^        u64 size               : 21;$/;"	m	struct:__anon2::__anon3
+size_class	src/heap.h	/^    u32                   size_class;$/;"	m	struct:sblock_header
+size_class_idx	src/heap.h	/^    u32                   size_class_idx;$/;"	m	struct:sblock_header
+slots_bitfields	src/heap.h	/^    u64                   slots_bitfields[64];$/;"	m	struct:sblock_header
+spin_init	src/locks.c	/^internal inline void spin_init(spin_t *spin_ptr) {$/;"	f
+spin_lock	src/locks.c	/^internal inline void spin_lock(spin_t *spin_ptr) {$/;"	f
+spin_t	src/locks.h	/^typedef pthread_spinlock_t spin_t;$/;"	t
+spin_unlock	src/locks.c	/^internal inline void spin_unlock(spin_t *spin_ptr) {$/;"	f
+sprintf	src/FormatString.c	/^static int sprintf(char *buffer,const char *format,...)$/;"	f	file:
+start	src/internal_malloc.h	/^    void *start;$/;"	m	struct:__anon17
+system_info	src/os.h	/^internal system_info_t system_info;$/;"	v
+system_info_init	src/os.c	/^internal void system_info_init(void) {$/;"	f
+system_info_t	src/os.h	/^} system_info_t;$/;"	t	typeref:struct:__anon1
+tail	src/heap.h	/^    cblock_header_t *tail;$/;"	m	struct:cblock_list
+thread_data_t	src/thread.h	/^} thread_data_t;$/;"	t	typeref:struct:__anon18
+thread_datas	src/thread.c	/^internal thread_data_t          *thread_datas;$/;"	v
+thread_datas_lock	src/thread.c	/^internal mutex_t                 thread_datas_lock;$/;"	v
+threads_init	src/thread.c	/^internal void threads_init(void) {$/;"	f
+tid	src/heap.h	/^        u16   tid;$/;"	m	union:__anon12::__anon13
+tid	src/heap.h	/^    u16                 tid;$/;"	m	struct:__anon14
+tid	src/thread.h	/^    hm_tid_t      tid;$/;"	m	struct:__anon18
+tree	src/tree.h	66;"	d
+tree_begin	src/tree.h	25;"	d
+tree_delete	src/tree.h	24;"	d
+tree_free	src/tree.h	21;"	d
+tree_geq	src/tree.h	27;"	d
+tree_gtr	src/tree.h	28;"	d
+tree_insert	src/tree.h	23;"	d
+tree_it	src/tree.h	64;"	d
+tree_it_equ	src/tree.h	44;"	d
+tree_it_good	src/tree.h	33;"	d
+tree_it_key	src/tree.h	30;"	d
+tree_it_next	src/tree.h	32;"	d
+tree_it_prev	src/tree.h	34;"	d
+tree_it_val	src/tree.h	31;"	d
+tree_last	src/tree.h	26;"	d
+tree_len	src/tree.h	20;"	d
+tree_lookup	src/tree.h	22;"	d
+tree_make	src/tree.h	18;"	d
+tree_make_c	src/tree.h	19;"	d
+tree_node	src/tree.h	62;"	d
+tree_pretty_name	src/tree.h	67;"	d
+tree_traverse	src/tree.h	46;"	d
+u16	src/internal.h	35;"	d
+u32	src/internal.h	36;"	d
+u64	src/internal.h	37;"	d
+u8	src/internal.h	34;"	d
+unlikely	src/hmalloc_cpp.cpp	5;"	d	file:
+unlikely	src/internal.h	26;"	d
+use_hash_table	src/hash_table.h	136;"	d
+use_tree	src/tree.h	86;"	d
+user_heaps_init	src/heap.c	/^internal inline void user_heaps_init(void) {$/;"	f
+user_heaps_lock	src/heap.h	/^internal mutex_t user_heaps_lock = MUTEX_INITIALIZER;$/;"	v
+valloc	src/hmalloc.c	/^external inline void * valloc(size_t n_bytes)               { return hmalloc_valloc(n_bytes);         }$/;"	f
+write_object_map_controller_info	src/proc_object_map.h	/^static int write_object_map_controller_info(int fd, struct object_map_controller_info *info) {$/;"	f

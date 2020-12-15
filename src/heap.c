@@ -1,7 +1,9 @@
 #include "internal.h"
+#include "init.h"
 #include "heap.h"
 #include "os.h"
 #include "thread.h"
+#include "kernel_objmap.h"
 
 #include <unistd.h>
 #include <string.h>
@@ -49,14 +51,18 @@ internal inline cblock_header_t * heap_new_aligned_cblock(heap_t *heap, u64 n_by
     chunk->__header = 0;
 
     chunk->flags |= CHUNK_IS_FREE;
-#ifdef HMALLOC_DO_ASSERTIONS
-    SET_CHUNK_MAGIC(chunk);
-#endif
     SET_CHUNK_SIZE(chunk, avail);
 
     cblock->free_list_head   =
     cblock->free_list_tail   =
         chunk;
+
+    /* @objmap */
+    if (hmalloc_objmap_mode == HMALLOC_OBJMAP_MODE_USER_HEAP
+    &&  heap->__meta.flags & HEAP_USER) {
+        kernel_objmap_add_object((void*)cblock, cblock->end - ((void*)cblock));
+        kernel_objmap_write_site((void*)cblock, cblock->end - ((void*)cblock), heap->__meta.handle);
+    }
 
     return cblock;
 }
@@ -68,6 +74,7 @@ internal inline cblock_header_t * heap_new_cblock(heap_t *heap, u64 n_bytes) {
 
 HMALLOC_ALWAYS_INLINE
 internal inline void cblock_list_remove_cblock(cblock_list_t *list, cblock_header_t *cblock) {
+
     if (cblock == list->head) {
         list->head = cblock->next;
     }
@@ -84,6 +91,12 @@ internal inline void cblock_list_remove_cblock(cblock_list_t *list, cblock_heade
 
 HMALLOC_ALWAYS_INLINE
 internal inline void release_cblock(cblock_header_t *cblock) {
+    /* @objmap */
+    if (hmalloc_objmap_mode == HMALLOC_OBJMAP_MODE_USER_HEAP
+    &&  ((block_header_t*)cblock)->heap__meta.flags & HEAP_USER) {
+        kernel_objmap_del_object((void*)cblock);
+    }
+
     release_pages_to_os((void*)cblock, ((cblock->end - ((void*)cblock)) >> system_info.log_2_page_size));
 }
 
@@ -151,6 +164,13 @@ sblock_header_t * heap_new_sblock(heap_t *heap, u32 size_class, u32 size_class_i
         }
     }
 
+    /* @objmap */
+    if (hmalloc_objmap_mode == HMALLOC_OBJMAP_MODE_USER_HEAP
+    &&  heap->__meta.flags & HEAP_USER) {
+        kernel_objmap_add_object((void*)sblock, sblock->end - ((void*)sblock));
+        kernel_objmap_write_site((void*)sblock, sblock->end - ((void*)sblock), heap->__meta.handle);
+    }
+
     return sblock;
 }
 
@@ -181,6 +201,12 @@ void heap_remove_sblock(heap_t *heap, sblock_header_t *sblock) {
 
 internal
 void release_sblock(sblock_header_t *sblock) {
+    /* @objmap */
+    if (hmalloc_objmap_mode == HMALLOC_OBJMAP_MODE_USER_HEAP
+    &&  ((block_header_t*)sblock)->heap__meta.flags & HEAP_USER) {
+        kernel_objmap_del_object((void*)sblock);
+    }
+
     release_pages_to_os((void*)sblock, ((sblock->end - ((void*)sblock)) >> system_info.log_2_page_size));
 }
 
@@ -240,7 +266,6 @@ internal inline void heap_make(heap_t *heap) {
 HMALLOC_ALWAYS_INLINE
 internal inline void cblock_coalesce_left_to_right(cblock_header_t *cblock, chunk_header_t *left, chunk_header_t *right) {
     ASSERT(left->flags & CHUNK_IS_FREE,         "can't coalesce into a non-free chunk");
-    ASSERT(CHECK_CHUNK_MAGIC(left),             "can't coalesce into a chunk without magic");
     ASSERT(right == SMALL_CHUNK_ADJACENT(left), "can't coalesce non-adjacent chunks");
 
     SET_CHUNK_SIZE(left,
@@ -264,7 +289,6 @@ internal inline void cblock_coalesce_right_to_left(cblock_header_t *cblock, chun
     chunk_header_t *prev_free_chunk;
 
     ASSERT(right->flags & CHUNK_IS_FREE,        "can't coalesce into a non-free chunk");
-    ASSERT(CHECK_CHUNK_MAGIC(right),            "can't coalesce into a chunk without magic");
     ASSERT(SMALL_CHUNK_ADJACENT(left) == right, "can't coalesce non-adjacent chunks");
 
     if (CHUNK_HAS_NEXT(right)) {
@@ -316,9 +340,6 @@ internal inline void cblock_remove_chunk_from_free_list(cblock_header_t *cblock,
 
 /*     chunk->flags &= ~CHUNK_IS_FREE; */
     chunk->flags = 0;
-#ifdef HMALLOC_DO_ASSERTIONS
-    CLEAR_CHUNK_MAGIC(chunk);
-#endif
 
     if (chunk == cblock->free_list_head) {
         if (chunk == cblock->free_list_tail) {
@@ -359,7 +380,6 @@ internal inline void cblock_remove_chunk_from_free_list(cblock_header_t *cblock,
 
     }
 
-    ASSERT(!CHECK_CHUNK_MAGIC(chunk),       "non-free chunk still has magic");
     ASSERT(!(chunk->flags & CHUNK_IS_FREE), "flags incorrectly set");
 }
 
@@ -374,10 +394,6 @@ internal inline void cblock_add_chunk_to_free_list(cblock_header_t *cblock, chun
 
     chunk->flags = CHUNK_IS_FREE;
 
-#ifdef HMALLOC_DO_ASSERTIONS
-    ASSERT(!CHECK_CHUNK_MAGIC(chunk), "trying to add a chunk to the free list, but it already has magic..");
-    SET_CHUNK_MAGIC(chunk);
-#endif
 
     if (cblock->free_list_head == NULL) {
         /* This will be the only chunk on the free list. */
@@ -512,13 +528,8 @@ internal inline void cblock_split_chunk_and_replace_on_free_list(cblock_header_t
 
 /*     chunk->flags &= ~CHUNK_IS_FREE; */
     chunk->flags = 0;
-#ifdef HMALLOC_DO_ASSERTIONS
-    ASSERT(CHECK_CHUNK_MAGIC(chunk), "can't split a chunk that still has magic");
-    CLEAR_CHUNK_MAGIC(chunk);
-    SET_CHUNK_MAGIC(new_chunk);
-#endif
 
-    new_chunk_size_words = chunk_size_words - n_words - 1/* sizeof(chunk_header_t) */;
+    new_chunk_size_words = chunk_size_words - n_words - 1 /* sizeof(chunk_header_t) */;
     chunk->size          = n_words;
 
     /*
@@ -626,7 +637,6 @@ found:;
         cblock_remove_chunk_from_free_list(cblock, chunk);
     }
 
-    ASSERT(!CHECK_CHUNK_MAGIC(chunk), "attempting to release a chunk that still has magic");
     ASSERT(!(chunk->flags & CHUNK_IS_FREE), "chunk never became released");
     ASSERT(CHUNK_SIZE(chunk) >= n_bytes,    "split chunk is no longer big enough");
 
@@ -805,6 +815,9 @@ internal inline void * heap_big_alloc(heap_t *heap, u64 n_bytes) {
     return mem;
 }
 
+/* @objmap */
+internal inline void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignment);
+
 HMALLOC_ALWAYS_INLINE
 internal inline void * heap_alloc(heap_t *heap, u64 n_bytes) {
     void *mem;
@@ -859,6 +872,14 @@ internal inline void * heap_alloc(heap_t *heap, u64 n_bytes) {
     ASSERT(n_bytes >  SBLOCK_MAX_ALLOC_SIZE, "CHUNK_MIN_SIZE and SBLOCK_MAX_ALLOC_SIZE are in conflict");
 #endif
 
+    /* @objmap */
+    if (hmalloc_objmap_mode == HMALLOC_OBJMAP_MODE_OBJECT
+    &&  n_bytes >= system_info.page_size) {
+        n_bytes = ALIGN(n_bytes, system_info.page_size);
+        mem = heap_aligned_alloc(heap, n_bytes, system_info.page_size);
+        goto out;
+    }
+
     if (unlikely(n_bytes > MAX_SMALL_CHUNK)) {
         /*
          * Currently, big allocations require no locking
@@ -886,6 +907,16 @@ internal inline void * heap_alloc(heap_t *heap, u64 n_bytes) {
 
 out:;
     ASSERT(IS_ALIGNED(mem, 8), "user memory is not properly aligned for performance");
+
+    /* @objmap */
+    if (hmalloc_objmap_mode == HMALLOC_OBJMAP_MODE_OBJECT
+    &&  n_bytes >= system_info.page_size) {
+        kernel_objmap_add_object(mem, n_bytes);
+        if (heap->__meta.flags & HEAP_USER) {
+            kernel_objmap_write_site(mem, n_bytes, heap->__meta.handle);
+        }
+        CHUNK_FROM_USER_MEM(mem)->flags |= CHUNK_IS_OBJMAP_ENTRY;
+    }
 
     return mem;
 }
@@ -1019,6 +1050,14 @@ internal inline void heap_free(heap_t *heap, void *addr) {
 
         chunk = CHUNK_FROM_USER_MEM(addr);
 
+        /* @objmap */
+        if (hmalloc_objmap_mode == HMALLOC_OBJMAP_MODE_OBJECT) {
+            if (chunk->flags & CHUNK_IS_OBJMAP_ENTRY) {
+                kernel_objmap_del_object(addr);
+                chunk->flags &= ~CHUNK_IS_OBJMAP_ENTRY;
+            }
+        }
+
         if (unlikely(chunk->flags & CHUNK_IS_BIG)) {
             heap_free_big_chunk(heap, chunk);
         } else {
@@ -1027,7 +1066,7 @@ internal inline void heap_free(heap_t *heap, void *addr) {
     }
 }
 
-HMALLOC_ALWAYS_INLINE
+// HMALLOC_ALWAYS_INLINE
 internal inline void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignment) {
     u64              sblock_n_bytes;
     u64              cblock_n_bytes;
@@ -1107,7 +1146,7 @@ internal inline void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t a
         goto out;
     }
 
-    chunk_end    = ((void*)chunk) + CHUNK_SIZE(chunk);
+    chunk_end    = ((void*)chunk) + CHUNK_SIZE(chunk) + sizeof(chunk_header_t);
     aligned_addr = ALIGN(CHUNK_USER_MEM(chunk), alignment);
 
     ASSERT(aligned_addr < chunk_end,           "could not get aligned memory from the single chunk");
@@ -1119,7 +1158,9 @@ internal inline void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t a
     SET_CHUNK_SIZE(chunk, chunk_end - aligned_addr);
     SET_CHUNK_SIZE(split_chunk, ((void*)chunk) - CHUNK_USER_MEM(split_chunk));
 
-    heap_free(heap, CHUNK_USER_MEM(split_chunk));
+    chunk->flags = 0;
+
+    cblock_free_chunk((cblock_header_t*)ADDR_PARENT_BLOCK(split_chunk), split_chunk);
 
     mem = aligned_addr;
 

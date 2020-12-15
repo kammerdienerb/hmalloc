@@ -11,6 +11,9 @@
 #include "os.c"
 #include "locks.c"
 #include "init.c"
+#define PROC_OBJECT_MAP_IMPL
+#include "proc_object_map.h"
+#include "kernel_objmap.c"
 
 #include <string.h>
 #include <errno.h>

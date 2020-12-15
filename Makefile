@@ -8,18 +8,18 @@ CFG_REL3=-march=native -O3
 CFG_REL_LOG=-march=native -O3 -DHMALLOC_DO_LOGGING
 
 # CFG=$(CFG_DEB1)
-CFG=$(CFG_DEB2)
+# CFG=$(CFG_DEB2)
 # CFG=$(CFG_DEB3)
 # CFG=$(CFG_DEB4)
 # CFG=$(CFG_REL1)
 # CFG=$(CFG_REL2)
 # CFG=$(CFG_REL3)
-# CFG=$(CFG_REL_LOG)
+CFG=$(CFG_REL_LOG)
 
 MAX_ERRS=-fmax-errors=3
 
-# FP=-fno-omit-frame-pointer # enable for profiling/debugging
-LTO=-flto
+FP=-fno-omit-frame-pointer # enable for profiling/debugging
+# LTO=-flto
 
 C_FLAGS=-c -fPIC $(LTO) $(FP) -ftls-model=initial-exec -Wall $(MAX_ERRS) -Werror -Wno-unused-function -Wno-unused-value $(CFG)
 CXX_FLAGS=$(C_FLAGS) -fno-rtti

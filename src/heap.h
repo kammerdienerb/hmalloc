@@ -7,8 +7,9 @@
 #include <pthread.h>
 
 /* Chunk header flags */
-#define CHUNK_IS_FREE (UINT16_C(0x0001))
-#define CHUNK_IS_BIG  (UINT16_C(0x0002))
+#define CHUNK_IS_FREE         (UINT16_C(0x0001))
+#define CHUNK_IS_BIG          (UINT16_C(0x0002))
+#define CHUNK_IS_OBJMAP_ENTRY (UINT16_C(0x0004))
 /* #define              (0x0004ULL) */
 /* #define              (0x0008ULL) */
 
@@ -16,8 +17,8 @@ typedef union {
     struct {
         u64 offset_prev_words  : 20;
         u64 offset_next_words  : 20;
-        u64 size               : 22;
-        u64 flags              : 2;
+        u64 size               : 21;
+        u64 flags              : 3;
     };
     u64 __header;
 } chunk_header_t;
@@ -261,12 +262,6 @@ typedef struct {
 
 #define CHUNK_PARENT_BLOCK(addr) \
     ADDR_PARENT_BLOCK(addr)
-
-#define CHUNK_MAGIC  (0x0123456789ABCDEF)
-#define SET_CHUNK_MAGIC(c)   (*((u64*)CHUNK_USER_MEM(c)) = CHUNK_MAGIC)
-#define CLEAR_CHUNK_MAGIC(c) (*((u64*)CHUNK_USER_MEM(c)) = 0ULL)
-#define CHECK_CHUNK_MAGIC(c) (*((u64*)CHUNK_USER_MEM(c)) == CHUNK_MAGIC)
-
 
 #define CBLOCK_FIRST_CHUNK(addr) ALIGN((((void*)(addr)) + sizeof(block_header_t)), 8)
 
