@@ -49,6 +49,9 @@ internal inline cblock_header_t * heap_new_aligned_cblock(heap_t *heap, u64 n_by
     chunk->__header = 0;
 
     chunk->flags |= CHUNK_IS_FREE;
+#ifdef HMALLOC_DO_ASSERTIONS
+    SET_CHUNK_MAGIC(chunk);
+#endif
     SET_CHUNK_SIZE(chunk, avail);
 
     cblock->free_list_head   =
@@ -135,7 +138,6 @@ sblock_header_t * heap_new_sblock(heap_t *heap, u32 size_class, u32 size_class_i
     sblock->max_allocations  = 4096ULL - _sblock_reserved_slots_lookup[size_class_idx];
     sblock->size_class_idx   = size_class_idx;
     sblock->size_class       = size_class;
-    sblock->log2_size_class  = _sblock_log2_lookup[size_class_idx];
 
     sblock->regions_bitfield = 0xFFFFFFFFFFFFFFFF;
 
@@ -237,10 +239,22 @@ internal inline void heap_make(heap_t *heap) {
 
 HMALLOC_ALWAYS_INLINE
 internal inline void cblock_coalesce_left_to_right(cblock_header_t *cblock, chunk_header_t *left, chunk_header_t *right) {
+    ASSERT(left->flags & CHUNK_IS_FREE,         "can't coalesce into a non-free chunk");
+    ASSERT(CHECK_CHUNK_MAGIC(left),             "can't coalesce into a chunk without magic");
     ASSERT(right == SMALL_CHUNK_ADJACENT(left), "can't coalesce non-adjacent chunks");
 
     SET_CHUNK_SIZE(left,
                    CHUNK_SIZE(left) + sizeof(chunk_header_t) + CHUNK_SIZE(right));
+
+    ASSERT(CHUNK_NEXT(left) == NULL ||
+           (void*)CHUNK_NEXT(left) > (void*)left + CHUNK_SIZE(left),
+           "next chunk in free list has been swallowed");
+
+    ASSERT(CHUNK_PREV(left) ||
+           CHUNK_NEXT(left) ||
+           (left == cblock->free_list_head && left == cblock->free_list_tail),
+           "chunk has been orphaned");
+
 }
 
 HMALLOC_ALWAYS_INLINE
@@ -249,10 +263,9 @@ internal inline void cblock_coalesce_right_to_left(cblock_header_t *cblock, chun
     chunk_header_t *next_free_chunk;
     chunk_header_t *prev_free_chunk;
 
-    ASSERT(right == SMALL_CHUNK_ADJACENT(left), "can't coalesce non-adjacent chunks");
-
-    SET_CHUNK_SIZE(left,
-                   CHUNK_SIZE(left) + sizeof(chunk_header_t) + CHUNK_SIZE(right));
+    ASSERT(right->flags & CHUNK_IS_FREE,        "can't coalesce into a non-free chunk");
+    ASSERT(CHECK_CHUNK_MAGIC(right),            "can't coalesce into a chunk without magic");
+    ASSERT(SMALL_CHUNK_ADJACENT(left) == right, "can't coalesce non-adjacent chunks");
 
     if (CHUNK_HAS_NEXT(right)) {
         next_free_chunk = CHUNK_NEXT_UNCHECKED(right);
@@ -287,6 +300,12 @@ internal inline void cblock_coalesce_right_to_left(cblock_header_t *cblock, chun
         left->offset_prev_words = 0;
         cblock->free_list_head  = left;
     }
+
+    SET_CHUNK_SIZE(left,
+                   CHUNK_SIZE(left) + sizeof(chunk_header_t) + CHUNK_SIZE(right));
+
+    ASSERT(CHUNK_NEXT(left) == NULL || CHUNK_NEXT(left) > right,
+           "next free chunk got swallowed somehow");
 }
 
 HMALLOC_ALWAYS_INLINE
@@ -297,6 +316,9 @@ internal inline void cblock_remove_chunk_from_free_list(cblock_header_t *cblock,
 
 /*     chunk->flags &= ~CHUNK_IS_FREE; */
     chunk->flags = 0;
+#ifdef HMALLOC_DO_ASSERTIONS
+    CLEAR_CHUNK_MAGIC(chunk);
+#endif
 
     if (chunk == cblock->free_list_head) {
         if (chunk == cblock->free_list_tail) {
@@ -306,8 +328,8 @@ internal inline void cblock_remove_chunk_from_free_list(cblock_header_t *cblock,
 
             next_free_chunk = CHUNK_NEXT_UNCHECKED(chunk);
 
-            SET_CHUNK_OFFSET_PREV(next_free_chunk, 0);
-            cblock->free_list_head        = next_free_chunk;
+            next_free_chunk->offset_prev_words = 0;
+            cblock->free_list_head             = next_free_chunk;
         }
 
     } else if (chunk == cblock->free_list_tail) {
@@ -318,8 +340,8 @@ internal inline void cblock_remove_chunk_from_free_list(cblock_header_t *cblock,
 
             prev_free_chunk = CHUNK_PREV_UNCHECKED(chunk);
 
-            SET_CHUNK_OFFSET_NEXT(prev_free_chunk, 0);
-            cblock->free_list_tail = prev_free_chunk;
+            prev_free_chunk->offset_next_words = 0;
+            cblock->free_list_tail             = prev_free_chunk;
         }
 
     } else {
@@ -336,6 +358,9 @@ internal inline void cblock_remove_chunk_from_free_list(cblock_header_t *cblock,
         SET_CHUNK_OFFSET_NEXT(prev_free_chunk, distance);
 
     }
+
+    ASSERT(!CHECK_CHUNK_MAGIC(chunk),       "non-free chunk still has magic");
+    ASSERT(!(chunk->flags & CHUNK_IS_FREE), "flags incorrectly set");
 }
 
 HMALLOC_ALWAYS_INLINE
@@ -346,7 +371,13 @@ internal inline void cblock_add_chunk_to_free_list(cblock_header_t *cblock, chun
     u64             distance;
 
     ASSERT(((void*)chunk) < cblock->end, "chunk doesn't belong to this cblock");
-    ASSERT(chunk->flags & CHUNK_IS_FREE, "can't add a non-free chunk to the free list");
+
+    chunk->flags = CHUNK_IS_FREE;
+
+#ifdef HMALLOC_DO_ASSERTIONS
+    ASSERT(!CHECK_CHUNK_MAGIC(chunk), "trying to add a chunk to the free list, but it already has magic..");
+    SET_CHUNK_MAGIC(chunk);
+#endif
 
     if (cblock->free_list_head == NULL) {
         /* This will be the only chunk on the free list. */
@@ -375,6 +406,7 @@ internal inline void cblock_add_chunk_to_free_list(cblock_header_t *cblock, chun
         /* Can we coalesce with the previous chunk? */
         if (SMALL_CHUNK_ADJACENT(cblock->free_list_tail) == chunk) {
             cblock_coalesce_left_to_right(cblock, cblock->free_list_tail, chunk);
+            chunk = cblock->free_list_tail;
         } else {
             distance = CHUNK_DISTANCE(chunk, cblock->free_list_tail);
             SET_CHUNK_OFFSET_PREV(chunk,                  distance);
@@ -392,13 +424,16 @@ internal inline void cblock_add_chunk_to_free_list(cblock_header_t *cblock, chun
                "can't coalesce_right_to_left with last chunk");
 
         cblock_coalesce_right_to_left(cblock, chunk, SMALL_CHUNK_ADJACENT(chunk));
+
         if (CHUNK_HAS_PREV(chunk)) {
             prev_free_chunk = CHUNK_PREV_UNCHECKED(chunk);
             if (SMALL_CHUNK_ADJACENT(prev_free_chunk) == chunk) {
                 cblock_remove_chunk_from_free_list(cblock, chunk);
                 cblock_coalesce_left_to_right(cblock, prev_free_chunk, chunk);
+                chunk = prev_free_chunk;
             }
         }
+
     } else {
         /* We'll have to find the right place for it. */
         free_list_cursor = cblock->free_list_tail;
@@ -444,14 +479,21 @@ internal inline void cblock_add_chunk_to_free_list(cblock_header_t *cblock, chun
             SET_CHUNK_OFFSET_NEXT(chunk, distance);
             SET_CHUNK_OFFSET_PREV(next_free_chunk, distance);
         }
+
     }
+
+    ASSERT(CHUNK_PREV(chunk) ||
+           CHUNK_NEXT(chunk) ||
+           (chunk == cblock->free_list_head && chunk == cblock->free_list_tail),
+           "chunk has been orphaned");
+
 }
 
 
 HMALLOC_ALWAYS_INLINE
-internal inline void cblock_split_chunk_and_replace_on_free_list(cblock_header_t *cblock, chunk_header_t *chunk, u64 chunk_size, u64 n_bytes, chunk_header_t *prev_free_chunk, int has_next) {
+internal inline void cblock_split_chunk_and_replace_on_free_list(cblock_header_t *cblock, chunk_header_t *chunk, u64 chunk_size_words, u64 n_words, chunk_header_t *prev_free_chunk, int has_next) {
     chunk_header_t *new_chunk;
-    u64             new_chunk_size;
+    u64             new_chunk_size_words;
     chunk_header_t *old_next;
     u64             distance;
 #ifdef HMALLOC_DO_ASSERTIONS
@@ -460,20 +502,24 @@ internal inline void cblock_split_chunk_and_replace_on_free_list(cblock_header_t
     old_adjacent = SMALL_CHUNK_ADJACENT(chunk);
 #endif
 
-    ASSERT(n_bytes >= CHUNK_MIN_SIZE,            "n_bytes too small");
+    ASSERT(n_words >= CHUNK_MIN_SIZE >> 3ULL,    "n_bytes too small");
     ASSERT(cblock->free_list_head != NULL,       "should have free chunk(s) to split");
     ASSERT(chunk->flags & CHUNK_IS_FREE,         "can't split chunk that isn't free");
     ASSERT(IS_ALIGNED(CHUNK_USER_MEM(chunk), 8), "user mem is misaligned");
-    ASSERT(IS_ALIGNED(n_bytes, 8),               "size is misaligned");
 
-    new_chunk = CHUNK_USER_MEM(chunk) + n_bytes;
+    new_chunk = CHUNK_USER_MEM(chunk) + (n_words << 3ULL);
     ASSERT(IS_ALIGNED(new_chunk, 8),             "new_chunk is misaligned");
 
 /*     chunk->flags &= ~CHUNK_IS_FREE; */
     chunk->flags = 0;
+#ifdef HMALLOC_DO_ASSERTIONS
+    ASSERT(CHECK_CHUNK_MAGIC(chunk), "can't split a chunk that still has magic");
+    CLEAR_CHUNK_MAGIC(chunk);
+    SET_CHUNK_MAGIC(new_chunk);
+#endif
 
-    new_chunk_size = chunk_size - n_bytes - sizeof(chunk_header_t);
-    SET_CHUNK_SIZE(chunk, n_bytes);
+    new_chunk_size_words = chunk_size_words - n_words - 1/* sizeof(chunk_header_t) */;
+    chunk->size          = n_words;
 
     /*
      * This produces much better code than setting the whole header to
@@ -482,7 +528,7 @@ internal inline void cblock_split_chunk_and_replace_on_free_list(cblock_header_t
     *new_chunk = (chunk_header_t){
         .offset_prev_words = 0,
         .offset_next_words = 0,
-        .size              = (new_chunk_size >> 3ULL),
+        .size              = new_chunk_size_words,
         .flags             = CHUNK_IS_FREE
     };
 
@@ -494,31 +540,44 @@ internal inline void cblock_split_chunk_and_replace_on_free_list(cblock_header_t
 
     if (prev_free_chunk) {
         distance = CHUNK_DISTANCE(new_chunk, prev_free_chunk);
+        ASSERT(distance != 0, "bad distance");
         SET_CHUNK_OFFSET_NEXT(prev_free_chunk, distance);
         SET_CHUNK_OFFSET_PREV(new_chunk, distance);
     } else {
+        ASSERT(chunk == cblock->free_list_head, "chunk has no prev, but isn't head");
         cblock->free_list_head = new_chunk;
     }
 
     if (has_next) {
         old_next = CHUNK_NEXT_UNCHECKED(chunk);
         distance = CHUNK_DISTANCE(old_next, new_chunk);
+        ASSERT(distance != 0, "bad distance");
         SET_CHUNK_OFFSET_NEXT(new_chunk, distance);
         SET_CHUNK_OFFSET_PREV(old_next, distance);
     } else {
+        ASSERT(chunk == cblock->free_list_tail, "chunk has no next, but isn't tail");
         cblock->free_list_tail = new_chunk;
     }
+
+    ASSERT(CHUNK_PREV(new_chunk) ||
+           CHUNK_NEXT(new_chunk) ||
+           (new_chunk == cblock->free_list_head && new_chunk == cblock->free_list_tail),
+           "split chunk has created an orphaned chunk");
 }
 
 
 HMALLOC_ALWAYS_INLINE
 internal inline chunk_header_t * cblock_get_chunk_if_free(cblock_header_t *cblock, u64 n_bytes) {
+    u64             n_words;
     chunk_header_t *chunk;
     chunk_header_t *prev_chunk;
     int             has_next;
+    u64             chunk_size_words;
     u64             chunk_size;
 
     ASSERT(IS_ALIGNED(n_bytes, 8), "n_bytes not aligned");
+
+    n_words = n_bytes >> 3ULL;
 
 #if HMALLOC_DO_ASSERTIONS
     chunk_header_t *cblock_first_chunk;
@@ -541,14 +600,14 @@ internal inline chunk_header_t * cblock_get_chunk_if_free(cblock_header_t *cbloc
          chunk != cblock->free_list_tail;
          chunk = CHUNK_NEXT_UNCHECKED(chunk)) {
 
-        chunk_size = CHUNK_SIZE(chunk);
-        if (chunk_size >= n_bytes) { goto found; }
+        chunk_size_words = chunk->size;
+        if (chunk_size_words >= n_words) { goto found; }
         prev_chunk = chunk;
     }
 
     /* Check the tail. */
     ASSERT(chunk == cblock->free_list_tail, "last chunk isn't tail");
-    if ((chunk_size = CHUNK_SIZE(chunk)) >= n_bytes) {
+    if ((chunk_size_words = chunk->size) >= n_words) {
         has_next = 0;
         goto found;
     }
@@ -558,13 +617,16 @@ internal inline chunk_header_t * cblock_get_chunk_if_free(cblock_header_t *cbloc
 
 found:;
 
+    chunk_size = chunk_size_words << 3ULL;
+
     /* Can we split this into two chunks? */
     if (chunk_size - n_bytes >= (sizeof(chunk_header_t) + CHUNK_MIN_SIZE)) {
-        cblock_split_chunk_and_replace_on_free_list(cblock, chunk, chunk_size, n_bytes, prev_chunk, has_next);
+        cblock_split_chunk_and_replace_on_free_list(cblock, chunk, chunk_size_words, n_words, prev_chunk, has_next);
     } else {
         cblock_remove_chunk_from_free_list(cblock, chunk);
     }
 
+    ASSERT(!CHECK_CHUNK_MAGIC(chunk), "attempting to release a chunk that still has magic");
     ASSERT(!(chunk->flags & CHUNK_IS_FREE), "chunk never became released");
     ASSERT(CHUNK_SIZE(chunk) >= n_bytes,    "split chunk is no longer big enough");
 
@@ -572,10 +634,9 @@ found:;
 }
 
 HMALLOC_ALWAYS_INLINE
-internal inline void * heap_alloc_from_cblock_list(heap_t *heap, cblock_list_t *list, u64 n_bytes) {
+internal inline chunk_header_t * heap_get_free_chunk_from_cblock_list(heap_t *heap, cblock_list_t *list, u64 n_bytes) {
     chunk_header_t  *chunk;
     cblock_header_t *cblock;
-    void            *mem;
 
     chunk = NULL;
 
@@ -586,10 +647,7 @@ internal inline void * heap_alloc_from_cblock_list(heap_t *heap, cblock_list_t *
     while (cblock != NULL) {
         chunk = cblock_get_chunk_if_free(cblock, n_bytes);
 
-        if (chunk != NULL) {
-/*             spin_unlock(&list->lock); */
-            goto found;
-        }
+        if (chunk != NULL) { goto found; }
 
         cblock = cblock->next;
     }
@@ -604,13 +662,22 @@ internal inline void * heap_alloc_from_cblock_list(heap_t *heap, cblock_list_t *
     chunk = cblock_get_chunk_if_free(cblock, n_bytes);
 
 found:;
-    spin_unlock(&list->lock);
+    LIST_UNLOCK(list);
 
     ASSERT(chunk != NULL, "invalid chunk -- could not allocate memory");
 
-    mem = CHUNK_USER_MEM(chunk);
+    return chunk;
+}
 
-    ASSERT(IS_ALIGNED(mem, 8), "user memory is not properly aligned for performance");
+HMALLOC_ALWAYS_INLINE
+internal inline void * heap_alloc_from_cblock_list(heap_t *heap, cblock_list_t *list, u64 n_bytes) {
+    chunk_header_t *chunk;
+    void           *mem;
+
+    chunk = heap_get_free_chunk_from_cblock_list(heap, list, n_bytes);
+    mem   = CHUNK_USER_MEM(chunk);
+
+    ASSERT(IS_ALIGNED(mem, 8), "user memory is not properly aligned");
 
     return mem;
 }
@@ -651,7 +718,7 @@ internal inline void * sblock_get_slot_if_free(sblock_header_t *sblock) {
     absolute_slot_idx = (first_free_region << 6ULL) + first_free_slot;
 
     slot =   ((void*)sblock)
-           + (absolute_slot_idx << sblock->log2_size_class);
+           + (absolute_slot_idx * sblock->size_class);
 
     ASSERT(slot >= (((void*)(sblock)) + 4096ULL), "slot address too small");
     ASSERT(slot < sblock->end,                    "slot address too large");
@@ -751,12 +818,14 @@ internal inline void * heap_alloc(heap_t *heap, u64 n_bytes) {
      */
 
     if (n_bytes <= SBLOCK_MAX_ALLOC_SIZE) {
-        size_class     = SBLOCK_SMALLEST_CLASS;
-        size_class_idx = 0;
-        while (n_bytes > size_class) {
-            size_class     <<= 2;
-            size_class_idx  += 1;
+        if (unlikely(n_bytes == 0)) {
+            n_bytes        = size_class = SBLOCK_SMALLEST_CLASS;
+            size_class_idx = 0;
+        } else {
+            size_class     = ALIGN(n_bytes, SBLOCK_INTERVAL);
+            size_class_idx = (size_class >> LOG2_64BIT(SBLOCK_INTERVAL)) - 1ULL;
         }
+
         HEAP_S_LOCK(heap, size_class_idx); {
             mem = heap_alloc_from_sblocks(heap, size_class, size_class_idx);
         } HEAP_S_UNLOCK(heap, size_class_idx);
@@ -802,7 +871,6 @@ internal inline void * heap_alloc(heap_t *heap, u64 n_bytes) {
         goto out;
     }
 
-
     size_class     = SMALLEST_CLASS;
     size_class_idx = 0;
     while (n_bytes > size_class) {
@@ -828,22 +896,19 @@ internal inline void cblock_free_chunk(cblock_header_t *cblock, chunk_header_t *
 
     ASSERT(!(chunk->flags & CHUNK_IS_FREE), "double free error");
 
-/*     chunk->flags |= CHUNK_IS_FREE; */
-    chunk->flags = CHUNK_IS_FREE;
-
     list = cblock->list;
-    spin_lock(&list->lock);
 
-/*     spin_lock(&cblock->lock); */
+    LIST_LOCK(list);
+
     cblock_add_chunk_to_free_list(cblock, chunk);
-/*     spin_unlock(&cblock->lock); */
 
-#define WHOLE_BLOCK_CHUNK_SIZE (DEFAULT_BLOCK_SIZE - sizeof(chunk_header_t) - sizeof(block_header_t))
+#define WHOLE_BLOCK_CHUNK_SIZE_IN_WORDS \
+    ((DEFAULT_BLOCK_SIZE - sizeof(chunk_header_t) - sizeof(block_header_t)) >> 3ULL)
 
     /* If the cblock only has one free chunk... */
-    if (cblock->free_list_head == cblock->free_list_tail) {
+    if (unlikely(cblock->free_list_head == cblock->free_list_tail)) {
         /* and if that chunk spans the whole cblock -- release it. */
-        if (CHUNK_SIZE(cblock->free_list_head) == WHOLE_BLOCK_CHUNK_SIZE) {
+        if (cblock->free_list_head->size == WHOLE_BLOCK_CHUNK_SIZE_IN_WORDS) {
             /* If this cblock isn't the only cblock in the heap... */
             if (cblock != list->head || cblock != list->tail) {
                 cblock_list_remove_cblock(list, cblock);
@@ -852,7 +917,7 @@ internal inline void cblock_free_chunk(cblock_header_t *cblock, chunk_header_t *
         }
     }
 
-    spin_unlock(&list->lock);
+    LIST_UNLOCK(list);
 #undef WHOLE_BLOCK_CHUNK_SIZE
 }
 
@@ -866,14 +931,52 @@ internal inline void heap_free_from_sblock(heap_t *heap, sblock_header_t *sblock
     u32 r;
     u32 s;
 
-    absolute_slot_idx = (slot - ((void*)(sblock))) >> sblock->log2_size_class;
+    switch (sblock->size_class_idx) {
+        case SBLOCK_CLASS_NANO_IDX:
+            absolute_slot_idx =
+                ((__sblock_slot_nano_t*)slot) - ((__sblock_slot_nano_t*)(void*)sblock);
+            break;
+        case SBLOCK_CLASS_MICRO_IDX:
+            absolute_slot_idx =
+                ((__sblock_slot_micro_t*)slot) - ((__sblock_slot_micro_t*)(void*)sblock);
+            break;
+        case SBLOCK_CLASS_TINY_IDX:
+            absolute_slot_idx =
+                ((__sblock_slot_tiny_t*)slot) - ((__sblock_slot_tiny_t*)(void*)sblock);
+            break;
+        case SBLOCK_CLASS_SMALL_IDX:
+            absolute_slot_idx =
+                ((__sblock_slot_small_t*)slot) - ((__sblock_slot_small_t*)(void*)sblock);
+            break;
+        case SBLOCK_CLASS_MEDIUM_IDX:
+            absolute_slot_idx =
+                ((__sblock_slot_medium_t*)slot) - ((__sblock_slot_medium_t*)(void*)sblock);
+            break;
+        case SBLOCK_CLASS_LARGE_IDX:
+            absolute_slot_idx =
+                ((__sblock_slot_large_t*)slot) - ((__sblock_slot_large_t*)(void*)sblock);
+            break;
+        case SBLOCK_CLASS_HUGE_IDX:
+            absolute_slot_idx =
+                ((__sblock_slot_huge_t*)slot) - ((__sblock_slot_huge_t*)(void*)sblock);
+            break;
+        case SBLOCK_CLASS_MEGA_IDX:
+            absolute_slot_idx =
+                ((__sblock_slot_mega_t*)slot) - ((__sblock_slot_mega_t*)(void*)sblock);
+            break;
+        default:
+            ASSERT(0, "invalid size_class");
+    }
+
     r = absolute_slot_idx >> 6ULL;
     s = absolute_slot_idx & 63ULL;
 
     ASSERT(!(sblock->slots_bitfields[r] & (1ULL << (63ULL - s))), "slot was not taken");
 
+    if (sblock->slots_bitfields[r] == 0ULL) {
+        sblock->regions_bitfield |= (1ULL << (63ULL - r));
+    }
     sblock->slots_bitfields[r] |= (1ULL << (63ULL - s));
-    sblock->regions_bitfield   |= (1ULL << (63ULL - r));
 
     ASSERT(sblock->n_allocations > 0, "sblock->n_allocations mismatch");
     sblock->n_allocations -= 1;
@@ -927,18 +1030,22 @@ internal inline void heap_free(heap_t *heap, void *addr) {
 HMALLOC_ALWAYS_INLINE
 internal inline void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignment) {
     u64              sblock_n_bytes;
+    u64              cblock_n_bytes;
     u64              size_class;
     u32              size_class_idx;
-    void            *mem,
-                    *aligned_addr;
+    chunk_header_t  *chunk;
+    void            *chunk_end;
+    void            *aligned_addr;
+    void            *mem;
+    chunk_header_t  *split_chunk;
 
-    ASSERT(alignment > 0, "invalid alignment -- must be > 0");
-    ASSERT(IS_POWER_OF_TWO(alignment), "invalid alignment -- must be a power of two");
+    ASSERT(alignment > 0,                   "invalid alignment -- must be > 0");
+    ASSERT(IS_POWER_OF_TWO(alignment),      "invalid alignment -- must be a power of two");
+    ASSERT(alignment <= DEFAULT_BLOCK_SIZE, "alignment is too large");
 
     if (n_bytes < 8) { n_bytes = 8; }
 
-    mem          = NULL;
-    aligned_addr = NULL;
+    mem = NULL;
 
     /*
      * All allocations are guaranteed to be aligned on 8 byte
@@ -955,33 +1062,70 @@ internal inline void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t a
      */
     if (n_bytes <= SBLOCK_MAX_ALLOC_SIZE && alignment <= SBLOCK_MAX_ALLOC_SIZE) {
         sblock_n_bytes = MAX(n_bytes, alignment);
-
-        size_class     = SBLOCK_SMALLEST_CLASS;
-        size_class_idx = 0;
-        while (sblock_n_bytes > size_class) {
-            size_class     <<= 2;
-            size_class_idx  += 1;
-        }
+        size_class     = ALIGN(sblock_n_bytes, SBLOCK_INTERVAL);
+        size_class_idx = (size_class >> LOG2_64BIT(SBLOCK_INTERVAL)) - 1ULL;
 
         HEAP_S_LOCK(heap, size_class_idx); {
             mem = heap_alloc_from_sblocks(heap, size_class, size_class_idx);
         } HEAP_S_UNLOCK(heap, size_class_idx);
 
-        if (mem) {
-            ASSERT(IS_ALIGNED(mem, alignment),
-                "failed to align from slot allocation");
-            return mem;
-        }
+        if (mem) { goto out; }
     }
 #endif
-    (void)size_class;
-    (void)size_class_idx;
     (void)sblock_n_bytes;
-    (void)aligned_addr;
 
-    ASSERT(0, "redo this");
+    cblock_n_bytes = alignment + n_bytes;
 
-    ASSERT(mem == aligned_addr, "memory acquired from chunk is not the expected aligned address");
+    /*
+     * If size is big:
+     * Use the regular big chunk procedure to get memory, but
+     * force the big chunk to have its chunk_header_t in the right place.
+     * free() won't work correctly if we don't do this.
+     */
+    if (cblock_n_bytes > MAX_SMALL_CHUNK) {
+        chunk = heap_get_big_chunk(heap, cblock_n_bytes);
+        mem   = ALIGN(CHUNK_USER_MEM(chunk), alignment);
+        memcpy(mem - sizeof(chunk_header_t), chunk, sizeof(chunk_header_t));
+        goto out;
+    }
+
+    size_class     = SMALLEST_CLASS;
+    size_class_idx = 0;
+    while (cblock_n_bytes > size_class) {
+        size_class     <<= 2;
+        size_class_idx  += 1;
+
+        if (size_class == LARGEST_CLASS) {
+            break;
+        }
+    }
+
+    chunk = heap_get_free_chunk_from_cblock_list(heap, &heap->lists[size_class_idx], cblock_n_bytes);
+
+    if (IS_ALIGNED(CHUNK_USER_MEM(chunk), alignment)) {
+        mem = CHUNK_USER_MEM(chunk);
+        goto out;
+    }
+
+    chunk_end    = ((void*)chunk) + CHUNK_SIZE(chunk);
+    aligned_addr = ALIGN(CHUNK_USER_MEM(chunk), alignment);
+
+    ASSERT(aligned_addr < chunk_end,           "could not get aligned memory from the single chunk");
+    ASSERT(aligned_addr + n_bytes < chunk_end, "not enough room in chunk for aligned memory");
+
+    split_chunk = chunk;
+    chunk       = CHUNK_FROM_USER_MEM(aligned_addr);
+    *chunk      = *split_chunk;
+    SET_CHUNK_SIZE(chunk, chunk_end - aligned_addr);
+    SET_CHUNK_SIZE(split_chunk, ((void*)chunk) - CHUNK_USER_MEM(split_chunk));
+
+    heap_free(heap, CHUNK_USER_MEM(split_chunk));
+
+    mem = aligned_addr;
+
+out:
+    ASSERT(mem,                        "did not allocate memory in heap_aligned_alloc");
+    ASSERT(IS_ALIGNED(mem, alignment), "failed to get aligned memory");
 
     return mem;
 }
