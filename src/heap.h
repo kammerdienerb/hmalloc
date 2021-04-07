@@ -7,9 +7,9 @@
 #include <pthread.h>
 
 /* Chunk header flags */
-#define CHUNK_IS_FREE         (UINT16_C(0x0001))
-#define CHUNK_IS_BIG          (UINT16_C(0x0002))
-#define CHUNK_IS_OBJMAP_ENTRY (UINT16_C(0x0004))
+#define CHUNK_IS_FREE      (UINT16_C(0x0001))
+#define CHUNK_IS_BIG       (UINT16_C(0x0002))
+#define CHUNK_IS_MSG_ENTRY (UINT16_C(0x0004))
 /* #define              (0x0004ULL) */
 /* #define              (0x0008ULL) */
 

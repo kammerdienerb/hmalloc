@@ -14,14 +14,14 @@ internal pthread_mutex_t hmalloc_init_lock = PTHREAD_MUTEX_INITIALIZER;
 #define HMALLOC_SITE_LAYOUT_THREAD    (1)
 #define HMALLOC_SITE_LAYOUT_SITE      (2)
 
-#define HMALLOC_OBJMAP_MODE_UNKNOWN   (1)
-#define HMALLOC_OBJMAP_MODE_OBJECT    (2)
-#define HMALLOC_OBJMAP_MODE_USER_HEAP (3)
+#define HMALLOC_MSG_MODE_UNKNOWN   (0)
+#define HMALLOC_MSG_MODE_OBJECT    (1)
+#define HMALLOC_MSG_MODE_USER_HEAP (2)
 
 internal int hmalloc_is_initialized = 0;
 internal int hmalloc_ignore_frees   = 0;
 internal int hmalloc_site_layout    = HMALLOC_SITE_LAYOUT_UNKNOWN;
-internal int hmalloc_objmap_mode    = HMALLOC_OBJMAP_MODE_UNKNOWN;
+internal int hmalloc_msg_mode       = HMALLOC_MSG_MODE_UNKNOWN;
 
 
 internal void hmalloc_init(void);

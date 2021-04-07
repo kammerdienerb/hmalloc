@@ -3,7 +3,7 @@
 #include "heap.h"
 #include "os.h"
 #include "thread.h"
-#include "kernel_objmap.h"
+#include "msg.h"
 
 #include <unistd.h>
 #include <string.h>
@@ -57,11 +57,10 @@ internal inline cblock_header_t * heap_new_aligned_cblock(heap_t *heap, u64 n_by
     cblock->free_list_tail   =
         chunk;
 
-    /* @objmap */
-    if (hmalloc_objmap_mode == HMALLOC_OBJMAP_MODE_USER_HEAP
+    /* @msg */
+    if (hmalloc_msg_mode == HMALLOC_MSG_MODE_USER_HEAP
     &&  heap->__meta.flags & HEAP_USER) {
-        kernel_objmap_add_object((void*)cblock, cblock->end - ((void*)cblock));
-        kernel_objmap_write_site((void*)cblock, cblock->end - ((void*)cblock), heap->__meta.handle);
+        msg_obj_alloc((void*)cblock, cblock->end - ((void*)cblock), heap);
     }
 
     return cblock;
@@ -91,10 +90,11 @@ internal inline void cblock_list_remove_cblock(cblock_list_t *list, cblock_heade
 
 HMALLOC_ALWAYS_INLINE
 internal inline void release_cblock(cblock_header_t *cblock) {
-    /* @objmap */
-    if (hmalloc_objmap_mode == HMALLOC_OBJMAP_MODE_USER_HEAP
+    /* @msg */
+    if (hmalloc_msg_mode == HMALLOC_MSG_MODE_USER_HEAP
     &&  ((block_header_t*)cblock)->heap__meta.flags & HEAP_USER) {
-        kernel_objmap_del_object((void*)cblock);
+
+        msg_obj_free((void*)cblock);
     }
 
     release_pages_to_os((void*)cblock, ((cblock->end - ((void*)cblock)) >> system_info.log_2_page_size));
@@ -164,11 +164,10 @@ sblock_header_t * heap_new_sblock(heap_t *heap, u32 size_class, u32 size_class_i
         }
     }
 
-    /* @objmap */
-    if (hmalloc_objmap_mode == HMALLOC_OBJMAP_MODE_USER_HEAP
+    /* @msg */
+    if (hmalloc_msg_mode == HMALLOC_MSG_MODE_USER_HEAP
     &&  heap->__meta.flags & HEAP_USER) {
-        kernel_objmap_add_object((void*)sblock, sblock->end - ((void*)sblock));
-        kernel_objmap_write_site((void*)sblock, sblock->end - ((void*)sblock), heap->__meta.handle);
+        msg_obj_alloc((void*)sblock, sblock->end - ((void*)sblock), heap);
     }
 
     return sblock;
@@ -201,10 +200,10 @@ void heap_remove_sblock(heap_t *heap, sblock_header_t *sblock) {
 
 internal
 void release_sblock(sblock_header_t *sblock) {
-    /* @objmap */
-    if (hmalloc_objmap_mode == HMALLOC_OBJMAP_MODE_USER_HEAP
+    /* @msg */
+    if (hmalloc_msg_mode == HMALLOC_MSG_MODE_USER_HEAP
     &&  ((block_header_t*)sblock)->heap__meta.flags & HEAP_USER) {
-        kernel_objmap_del_object((void*)sblock);
+        msg_obj_free((void*)sblock);
     }
 
     release_pages_to_os((void*)sblock, ((sblock->end - ((void*)sblock)) >> system_info.log_2_page_size));
@@ -815,7 +814,7 @@ internal inline void * heap_big_alloc(heap_t *heap, u64 n_bytes) {
     return mem;
 }
 
-/* @objmap */
+/* @msg */
 internal inline void * heap_aligned_alloc(heap_t *heap, size_t n_bytes, size_t alignment);
 
 HMALLOC_ALWAYS_INLINE
@@ -872,8 +871,8 @@ internal inline void * heap_alloc(heap_t *heap, u64 n_bytes) {
     ASSERT(n_bytes >  SBLOCK_MAX_ALLOC_SIZE, "CHUNK_MIN_SIZE and SBLOCK_MAX_ALLOC_SIZE are in conflict");
 #endif
 
-    /* @objmap */
-    if (hmalloc_objmap_mode == HMALLOC_OBJMAP_MODE_OBJECT
+    /* @msg */
+    if (hmalloc_msg_mode == HMALLOC_MSG_MODE_OBJECT
     &&  n_bytes >= system_info.page_size) {
         n_bytes = ALIGN(n_bytes, system_info.page_size);
         mem = heap_aligned_alloc(heap, n_bytes, system_info.page_size);
@@ -908,14 +907,11 @@ internal inline void * heap_alloc(heap_t *heap, u64 n_bytes) {
 out:;
     ASSERT(IS_ALIGNED(mem, 8), "user memory is not properly aligned for performance");
 
-    /* @objmap */
-    if (hmalloc_objmap_mode == HMALLOC_OBJMAP_MODE_OBJECT
+    /* @msg */
+    if (hmalloc_msg_mode == HMALLOC_MSG_MODE_OBJECT
     &&  n_bytes >= system_info.page_size) {
-        kernel_objmap_add_object(mem, n_bytes);
-        if (heap->__meta.flags & HEAP_USER) {
-            kernel_objmap_write_site(mem, n_bytes, heap->__meta.handle);
-        }
-        CHUNK_FROM_USER_MEM(mem)->flags |= CHUNK_IS_OBJMAP_ENTRY;
+        msg_obj_alloc(mem, n_bytes, heap);
+        CHUNK_FROM_USER_MEM(mem)->flags |= CHUNK_IS_MSG_ENTRY;
     }
 
     return mem;
@@ -1050,11 +1046,11 @@ internal inline void heap_free(heap_t *heap, void *addr) {
 
         chunk = CHUNK_FROM_USER_MEM(addr);
 
-        /* @objmap */
-        if (hmalloc_objmap_mode == HMALLOC_OBJMAP_MODE_OBJECT) {
-            if (chunk->flags & CHUNK_IS_OBJMAP_ENTRY) {
-                kernel_objmap_del_object(addr);
-                chunk->flags &= ~CHUNK_IS_OBJMAP_ENTRY;
+        /* @msg */
+        if (hmalloc_msg_mode == HMALLOC_MSG_MODE_OBJECT) {
+            if (chunk->flags & CHUNK_IS_MSG_ENTRY) {
+                msg_obj_free(addr);
+                chunk->flags &= ~CHUNK_IS_MSG_ENTRY;
             }
         }
 

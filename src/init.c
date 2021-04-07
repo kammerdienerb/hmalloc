@@ -2,7 +2,6 @@
 #include "internal_malloc.h"
 #include "os.h"
 #include "thread.h"
-#include "kernel_objmap.h"
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -27,7 +26,7 @@ internal void perform_sanity_checks(void) {
 
 internal void hmalloc_init(void) {
     const char *layout;
-    const char *objmap_mode;
+    const char *msg_mode;
 
     /*
      * Thread-unsafe check for performance.
@@ -73,29 +72,29 @@ internal void hmalloc_init(void) {
                 LOG("missing value for HMALLOC_SITE_LAYOUT -- defaulting to HMALLOC_SITE_LAYOUT_THREAD\n");
             }
 
-            objmap_mode = getenv("HMALLOC_OBJMAP_MODE");
-            if (objmap_mode) {
-                if (strcmp(objmap_mode, "object") == 0) {
-                    hmalloc_objmap_mode = HMALLOC_OBJMAP_MODE_OBJECT;
-                    LOG("HMALLOC_OBJMAP_MODE = HMALLOC_OBJMAP_MODE_OBJECT\n");
-                } else if (strcmp(objmap_mode, "user-heap") == 0) {
-                    hmalloc_objmap_mode = HMALLOC_OBJMAP_MODE_USER_HEAP;
-                    LOG("HMALLOC_OBJMAP_MODE = HMALLOC_OBJMAP_MODE_USER_HEAP\n");
+            msg_mode = getenv("HMALLOC_MSG_MODE");
+            if (msg_mode) {
+                if (strcmp(msg_mode, "object") == 0) {
+                    hmalloc_msg_mode = HMALLOC_MSG_MODE_OBJECT;
+                    LOG("HMALLOC_MSG_MODE = HMALLOC_MSG_MODE_OBJECT\n");
+                } else if (strcmp(msg_mode, "user-heap") == 0) {
+                    hmalloc_msg_mode = HMALLOC_MSG_MODE_USER_HEAP;
+                    LOG("HMALLOC_MSG_MODE = HMALLOC_MSG_MODE_USER_HEAP\n");
                 } else {
-                    LOG("invalid value '%s' for HMALLOC_OBJMAP_MODE\n", objmap_mode);
-                    ASSERT(0, "invalid HMALLOC_OBJMAP_MODE value");
+                    LOG("invalid value '%s' for HMALLOC_MSG_MODE\n", msg_mode);
+                    ASSERT(0, "invalid HMALLOC_MSG_MODE value");
                 }
             } else {
-                LOG("missing value for HMALLOC_OBJMAP_MODE -- objmap will not be used\n");
+                LOG("missing value for HMALLOC_MSG_MODE -- no messages will not be sent\n");
             }
 
             threads_init();
 
             user_heaps_init();
 
-            /* @objmap */
-            if (hmalloc_objmap_mode) {
-                kernel_objmap_init();
+            /* @msg */
+            if (hmalloc_msg_mode) {
+                msg_init();
             }
 
             hmalloc_is_initialized = 1;
@@ -106,6 +105,10 @@ internal void hmalloc_init(void) {
 
 __attribute__((destructor))
 internal void hmalloc_fini(void) {
+    /* @msg */
+    if (hmalloc_msg_mode) {
+        msg_fini();
+    }
 
     /*
      * After this point, we're going to stop servicing `free`s.

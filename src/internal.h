@@ -11,6 +11,11 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <sys/sysinfo.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 
 #define HMALLOC_ANSI_C
